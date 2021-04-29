@@ -18,13 +18,13 @@ public interface UncheckedBiConsumer<P, R> extends BiConsumer<P, R> {
      * @param r
      * @throws Throwable
      */
-    public void acceotUnchecked(P t, R r) throws Throwable;
+    public void acceptUnchecked(P t, R r) throws Throwable;
 
     @Override
     public default void accept(P t, R r) throws NestedException {
 
         try {
-            acceotUnchecked(t, r);
+            acceptUnchecked(t, r);
         } catch (Throwable e) {
             throw NestedException.of(e);
         }
