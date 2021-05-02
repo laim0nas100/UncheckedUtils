@@ -3,6 +3,7 @@ package lt.lb.uncheckedutils.func;
 import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 import lt.lb.uncheckedutils.NestedException;
+import lt.lb.uncheckedutils.SafeOpt;
 
 /**
  *
@@ -14,7 +15,7 @@ public interface UncheckedSupplier<T> extends Supplier<T>, Callable<T> {
     @Override
     public default T call() throws Exception {
         try {
-            return this.uncheckedGet();
+            return this.getUnchecked();
         } catch (Throwable e) {
             Throwable real = NestedException.unwrap(e);
             if (real instanceof Exception) {
@@ -28,7 +29,7 @@ public interface UncheckedSupplier<T> extends Supplier<T>, Callable<T> {
     public default T get() throws NestedException {
 
         try {
-            return this.uncheckedGet();
+            return this.getUnchecked();
         } catch (Throwable e) {
             throw NestedException.of(e);
         }
@@ -41,5 +42,14 @@ public interface UncheckedSupplier<T> extends Supplier<T>, Callable<T> {
      * @return
      * @throws java.lang.Throwable
      */
-    public T uncheckedGet() throws Throwable;
+    public T getUnchecked() throws Throwable;
+
+    /**
+     * Get result as {@link SafeOp}.
+     * @param t
+     * @return 
+     */
+    public default SafeOpt<T> getSafe(T t) {
+        return SafeOpt.ofGet(this);
+    }
 }

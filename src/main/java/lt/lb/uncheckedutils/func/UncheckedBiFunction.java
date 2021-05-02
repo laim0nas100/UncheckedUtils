@@ -2,6 +2,7 @@ package lt.lb.uncheckedutils.func;
 
 import java.util.function.BiFunction;
 import lt.lb.uncheckedutils.NestedException;
+import lt.lb.uncheckedutils.SafeOpt;
 
 /**
  *
@@ -30,4 +31,16 @@ public interface UncheckedBiFunction<O, P, R> extends BiFunction<O, P, R> {
      */
     public R applyUnchecked(O t, P u) throws Throwable;
 
+    /**
+     * Apply and get result with optional exception as {@link SafeOp}.
+     *
+     * @param t
+     * @param u
+     * @return
+     */
+    public default SafeOpt<R> applySafe(O t, P u) {
+        return SafeOpt.ofGet(() -> {
+            return applyUnchecked(t, u);
+        });
+    }
 }

@@ -2,6 +2,7 @@ package lt.lb.uncheckedutils.func;
 
 import java.util.concurrent.Callable;
 import lt.lb.uncheckedutils.NestedException;
+import lt.lb.uncheckedutils.SafeOpt;
 
 /**
  *
@@ -22,10 +23,22 @@ public interface UncheckedRunnable extends Runnable {
     public default void run() throws NestedException {
 
         try {
-            this.uncheckedRun();
+            this.runUnchecked();
         } catch (Throwable e) {
             throw NestedException.of(e);
         }
+    }
+
+    /**
+     * Run and get optional exception as {@link SafeOp}.
+     *
+     * @return
+     */
+    public default SafeOpt<Void> runSafe() {
+        return SafeOpt.ofGet(() -> {
+            run();
+            return null;
+        });
     }
 
     /**
@@ -34,7 +47,7 @@ public interface UncheckedRunnable extends Runnable {
      *
      * @throws java.lang.Throwable
      */
-    public void uncheckedRun() throws Throwable;
+    public void runUnchecked() throws Throwable;
 
     public static <T> Callable<T> toCallable(UncheckedRunnable run, final T val) {
         return (UncheckedSupplier<T>) () -> val;

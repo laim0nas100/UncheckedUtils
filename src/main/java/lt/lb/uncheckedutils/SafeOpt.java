@@ -85,7 +85,7 @@ public class SafeOpt<T> {
      */
     public static <T> SafeOpt<T> ofGet(UncheckedSupplier<? extends T> sup) {
         Objects.requireNonNull(sup);
-        return READY.map(m -> sup.get());
+        return READY.map(m -> sup.getUnchecked());
     }
 
     /**

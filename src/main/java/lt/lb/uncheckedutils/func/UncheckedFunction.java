@@ -2,6 +2,7 @@ package lt.lb.uncheckedutils.func;
 
 import java.util.function.Function;
 import lt.lb.uncheckedutils.NestedException;
+import lt.lb.uncheckedutils.SafeOpt;
 
 /**
  *
@@ -19,7 +20,7 @@ public interface UncheckedFunction<P, R> extends Function<P, R> {
      * @throws java.lang.Throwable
      */
     public R applyUnchecked(P t) throws Throwable;
-
+    
     @Override
     public default R apply(P t) throws NestedException {
         try {
@@ -27,5 +28,14 @@ public interface UncheckedFunction<P, R> extends Function<P, R> {
         } catch (Throwable e) {
             throw NestedException.of(e);
         }
+    }
+    
+    /**
+     * Apply and get result as {@link SafeOpt}
+     * @param t
+     * @return 
+     */
+    public default SafeOpt<R> applySafe(P t) {
+        return SafeOpt.ofGet(() -> applyUnchecked(t));
     }
 }

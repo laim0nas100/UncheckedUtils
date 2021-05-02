@@ -2,6 +2,7 @@ package lt.lb.uncheckedutils.func;
 
 import java.util.function.Consumer;
 import lt.lb.uncheckedutils.NestedException;
+import lt.lb.uncheckedutils.SafeOpt;
 
 /**
  *
@@ -26,6 +27,19 @@ public interface UncheckedConsumer<P> extends Consumer<P> {
         } catch (Throwable e) {
             throw NestedException.of(e);
         }
+    }
+
+    /**
+     * Apply and get optional exception as {@link SafeOp}.
+     *
+     * @param t
+     * @return
+     */
+    public default SafeOpt<Void> acceptSafe(P t) {
+        return SafeOpt.ofGet(() -> {
+            acceptUnchecked(t);
+            return null;
+        });
     }
 
 }

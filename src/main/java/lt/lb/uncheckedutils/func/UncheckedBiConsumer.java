@@ -2,6 +2,7 @@ package lt.lb.uncheckedutils.func;
 
 import java.util.function.BiConsumer;
 import lt.lb.uncheckedutils.NestedException;
+import lt.lb.uncheckedutils.SafeOpt;
 
 /**
  *
@@ -28,6 +29,20 @@ public interface UncheckedBiConsumer<P, R> extends BiConsumer<P, R> {
         } catch (Throwable e) {
             throw NestedException.of(e);
         }
+    }
+
+    /**
+     * Accept and get optional exception as {@link SafeOp}.
+     *
+     * @param t
+     * @param r
+     * @return
+     */
+    public default SafeOpt<Void> acceptSafe(P t, R r) {
+        return SafeOpt.ofGet(() -> {
+            acceptUnchecked(t, r);
+            return null;
+        });
     }
 
 }
