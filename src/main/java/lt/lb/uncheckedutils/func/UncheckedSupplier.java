@@ -46,10 +46,9 @@ public interface UncheckedSupplier<T> extends Supplier<T>, Callable<T> {
 
     /**
      * Get result as {@link SafeOp}.
-     * @param t
      * @return 
      */
-    public default SafeOpt<T> getSafe(T t) {
+    public default SafeOpt<T> getSafe() {
         return SafeOpt.ofGet(this);
     }
 }
