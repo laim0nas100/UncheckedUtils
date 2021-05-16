@@ -135,6 +135,9 @@ public class SafeOpt<T> {
      * @return
      */
     public static <T> SafeOpt<T> ofOptional(Optional<? extends T> opt) {
+        if (opt == null) {
+            return SafeOpt.empty();
+        }
         return opt.isPresent() ? SafeOpt.of(opt.get()) : SafeOpt.empty();
     }
 
@@ -184,7 +187,7 @@ public class SafeOpt<T> {
      * {@code false}
      */
     public boolean hasValueOrError() {
-        return threw != null || val != null;
+        return isPresent() || hasError();
     }
 
     /**
@@ -208,7 +211,7 @@ public class SafeOpt<T> {
      * null
      */
     public SafeOpt<T> ifPresent(Consumer<? super T> consumer) {
-        if (val != null) {
+        if (isPresent()) {
             consumer.accept(val);
         }
         return this;
@@ -227,7 +230,7 @@ public class SafeOpt<T> {
      * is {@code null}.
      */
     public SafeOpt<T> ifPresentOrElse(Consumer<? super T> action, Runnable emptyAction) {
-        if (val != null) {
+        if (isPresent()) {
             action.accept(val);
         } else {
             emptyAction.run();
@@ -237,7 +240,8 @@ public class SafeOpt<T> {
 
     /**
      * If a value is present, performs the given action with the value,
-     * otherwise performs the same action with the given default value
+     * otherwise performs the same action with the given default value. Whether
+     * exception has occurred is irrelevant.
      *
      * @param def default value
      * @param action the action to be performed
@@ -247,7 +251,7 @@ public class SafeOpt<T> {
      * value is not null.
      */
     public SafeOpt<T> ifPresentOrDefault(T def, Consumer<? super T> action) {
-        action.accept(val != null ? val : def);
+        action.accept(isPresent() ? val : def);
         return this;
     }
 
@@ -320,12 +324,12 @@ public class SafeOpt<T> {
     }
 
     /**
-     * Aggregation of {@code filter(clazz::isInstance).map(t -> (U) t);}
+     * Sugar for {@code filter(clazz::isInstance).map(t -> (U) t);}
      *
      * @param <U> The type of the result of the mapping function
      * @param clazz instance to filter value
      * @return an {@code SafeOpt} of given action aggregation
-     * @throws NullPointerException if the clazz is null
+     * @throws NullPointerException if the provided class is null
      */
     public <U> SafeOpt<U> select(Class<? extends U> clazz) {
         Objects.requireNonNull(clazz);
@@ -365,15 +369,15 @@ public class SafeOpt<T> {
             return SafeOpt.errorOrEmpty(threw);
         } else {
             try {
-                SafeOpt<? extends U> apply = mapper.apply(val);
-                if (apply.isPresent()) {
-                    return SafeOpt.of(apply.get());
+                SafeOpt<? extends U> opt = mapper.apply(val);
+                if (opt == null) {
+                    return SafeOpt.empty();
                 }
+                return new SafeOpt<>(opt.val, opt.threw);
 
             } catch (Throwable t) {
                 return SafeOpt.errorOrEmpty(NestedException.unwrap(t));
             }
-            return SafeOpt.empty();
         }
     }
 
