@@ -72,6 +72,21 @@ public class SafeOpt<T> {
         Objects.requireNonNull(sup);
         return READY.map(m -> sup.get());
     }
+    
+    /**
+     * Returns an {@code SafeOpt} with the specified present non-null value.
+     *
+     * @param <T> the class of the value
+     * @param sup the value supplier to be present
+     * @return an {@code SafeOpt} with the value with {@code SafeOpt} present, or an empty
+     * {@code SafeOpt} if supplier or it's value is null or {@code SafeOpt} with exception. If exception occurred
+     * anywhere, then it will be captured and empty {@code SafeOpt} with such
+     * exception will be returned
+     */
+    public static <T> SafeOpt<T> ofFlatGet(Supplier<? extends SafeOpt<T>> sup) {
+        Objects.requireNonNull(sup);
+        return READY.flatMap(m -> sup.get());
+    }
 
     /**
      * Returns an {@code SafeOpt} with the specified present non-null value.
@@ -86,6 +101,21 @@ public class SafeOpt<T> {
     public static <T> SafeOpt<T> ofGet(UncheckedSupplier<? extends T> sup) {
         Objects.requireNonNull(sup);
         return READY.map(m -> sup.getUnchecked());
+    }
+    
+    /**
+     * Returns an {@code SafeOpt} with the specified present non-null value.
+     *
+     * @param <T> the class of the value
+     * @param sup the value supplier to be present
+     * @return an {@code SafeOpt} with the value with {@code SafeOpt} present, or an empty
+     * {@code SafeOpt} if supplier or it's value is null or {@code SafeOpt} with exception. If exception occurred
+     * anywhere, then it will be captured and empty {@code SafeOpt} with such
+     * exception will be returned
+     */
+    public static <T> SafeOpt<T> ofFlatGet(UncheckedSupplier<? extends SafeOpt<T>> sup) {
+        Objects.requireNonNull(sup);
+        return READY.flatMap(m -> sup.get());
     }
 
     /**
