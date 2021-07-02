@@ -21,7 +21,7 @@ import java.util.Objects;
  */
 public class PassableException extends RuntimeException {
 
-    protected Class<? extends Throwable> exceptionType = Throwable.class;
+    protected final Class<? extends Throwable> exceptionType;
     protected final Object data;
 
     public PassableException(Class<? extends Throwable> cls, String message, Object data) {
@@ -35,11 +35,11 @@ public class PassableException extends RuntimeException {
     }
 
     public PassableException(String message) {
-        this(Throwable.class, message, null);
+        this(defaultExceptionType(), message, null);
     }
 
     public PassableException(String message, Object data) {
-        this(Throwable.class, message, data);
+        this(defaultExceptionType(), message, data);
     }
 
     public PassableException(Class<? extends Throwable> cls) {
@@ -59,6 +59,14 @@ public class PassableException extends RuntimeException {
     public static String defaultMessage(Class<? extends Throwable> cls) {
         Objects.requireNonNull(cls, "Exception type must not be null");
         return "Explicit error of type " + cls.getName();
+    }
+    
+    /**
+     * The default exception type is {@link RuntimeException}
+     * @return 
+     */
+    public static Class<? extends Throwable> defaultExceptionType(){
+        return RuntimeException.class;
     }
 
     /**
