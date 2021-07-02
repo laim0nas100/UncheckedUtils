@@ -759,6 +759,16 @@ public class SafeOpt<T> {
     public T throwNestedOrNull() {
         return throwIfErrorAsNested().orElse(null);
     }
+    
+    /**
+     * Shorthand for {@link SafeOpt#throwIfErrorAsNested() } and
+     * {@code orElse(Object)}
+     *
+     * @return
+     */
+    public T throwNestedOr(T val) {
+        return throwIfErrorAsNested().orElse(val);
+    }
 
     /**
      * Shorthand for orElse(null)
