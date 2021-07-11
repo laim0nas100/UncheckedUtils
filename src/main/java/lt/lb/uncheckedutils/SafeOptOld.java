@@ -3,7 +3,6 @@ package lt.lb.uncheckedutils;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.Future;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -23,222 +22,185 @@ import lt.lb.uncheckedutils.func.UncheckedSupplier;
  * bombarded with exceptions. After all is set and done, do the exception
  * handling if need be.
  *
- * Also the ability to return exceptions instead of throwing them (better
- * performance), especially combined with {@link PassableException}.
- *
  * @author laim0nas100
  */
-public interface SafeOpt<T> {
+@Deprecated
+public class SafeOptOld<T> {
 
     /**
-     * Returns an {@code SafeOpt} with the specified present non-null value.
+     * If non-null, the value; if null, indicates no value is present
+     */
+    protected final T val;
+
+    /**
+     * If non-null, the exception; if null, indicates no exception is present
+     */
+    protected final Throwable threw;
+
+    protected static final SafeOptOld<?> READY = new SafeOptOld<>(new Object(), null);
+
+    protected static final SafeOptOld<?> EMPTY = new SafeOptOld<>(null, null);
+
+    protected SafeOptOld(T value, Throwable throwable) {
+        val = value;
+        threw = throwable;
+    }
+
+    /**
+     * Returns an {@code SafeOptOld} with the specified present non-null value.
      *
      * @param <T> the class of the value
      * @param val the value to be present, which must be non-null
-     * @return an {@code SafeOpt} with the value present
+     * @return an {@code SafeOptOld} with the value present
      * @throws NullPointerException if value is null
      */
-    public static <T> SafeOpt<T> of(T val) {
+    public static <T> SafeOptOld<T> of(T val) {
         Objects.requireNonNull(val);
-        return new SafeOptVal<>(val, null);
+        return new SafeOptOld(val, null);
     }
 
     /**
-     * Returns an {@code SafeOpt} with the specified present non-null value.
+     * Returns an {@code SafeOptOld} with the specified present non-null value.
      *
      * @param <T> the class of the value
      * @param sup the value supplier to be present
-     * @return an {@code SafeOpt} with the value present, or an empty
-     * {@code SafeOpt} if supplier or it's value is null. If exception occurred
-     * anywhere, then it will be captured and empty {@code SafeOpt} with such
+     * @return an {@code SafeOptOld} with the value present, or an empty
+     * {@code SafeOptOld} if supplier or it's value is null. If exception occurred
+     * anywhere, then it will be captured and empty {@code SafeOptOld} with such
      * exception will be returned
      */
-    public static <T> SafeOpt<T> ofGet(Supplier<? extends T> sup) {
+    public static <T> SafeOptOld<T> ofGet(Supplier<? extends T> sup) {
         Objects.requireNonNull(sup);
-        try {
-            T get = sup.get();
-            return new SafeOptVal<>(get, null);
-        } catch (Throwable t) {
-            return new SafeOptVal<>(null, NestedException.unwrap(t));
-        }
+        return READY.map(m -> sup.get());
     }
-
+    
     /**
-     * Returns an {@code SafeOpt} with the specified present non-null value.
+     * Returns an {@code SafeOptOld} with the specified present non-null value.
      *
      * @param <T> the class of the value
      * @param sup the value supplier to be present
-     * @return an {@code SafeOpt} with the value with {@code SafeOpt} present,
-     * or an empty {@code SafeOpt} if supplier or it's value is null or
-     * {@code SafeOpt} with exception. If exception occurred anywhere, then it
-     * will be captured and empty {@code SafeOpt} with such exception will be
-     * returned
-     */
-    public static <T> SafeOpt<T> ofFlatGet(Supplier<? extends SafeOpt<T>> sup) {
-        Objects.requireNonNull(sup);
-        try {
-            SafeOpt<T> get = sup.get();
-            if (get == null) {
-                return SafeOpt.empty();
-            } else {
-                return get;
-            }
-        } catch (Throwable t) {
-            return new SafeOptVal<>(null, NestedException.unwrap(t));
-        }
-    }
-
-    /**
-     * Returns an {@code SafeOpt} with the specified present non-null value.
-     *
-     * @param <T> the class of the value
-     * @param sup the value supplier to be present
-     * @return an {@code SafeOpt} with the value present, or an empty
-     * {@code SafeOpt} if supplier or it's value is null. If exception occurred
-     * anywhere, then it will be captured and empty {@code SafeOpt} with such
+     * @return an {@code SafeOptOld} with the value with {@code SafeOptOld} present, or an empty
+     * {@code SafeOptOld} if supplier or it's value is null or {@code SafeOptOld} with exception. If exception occurred
+     * anywhere, then it will be captured and empty {@code SafeOptOld} with such
      * exception will be returned
      */
-    public static <T> SafeOpt<T> ofGet(UncheckedSupplier<? extends T> sup) {
+    public static <T> SafeOptOld<T> ofFlatGet(Supplier<? extends SafeOptOld<T>> sup) {
         Objects.requireNonNull(sup);
-        try {
-            T get = sup.getUnchecked();
-            return new SafeOptVal<>(get, null);
-        } catch (Throwable t) {
-            return new SafeOptVal<>(null, NestedException.unwrap(t));
-        }
+        return READY.flatMap(m -> sup.get());
     }
 
     /**
-     * Returns an {@code SafeOpt} with the specified present non-null value.
+     * Returns an {@code SafeOptOld} with the specified present non-null value.
      *
      * @param <T> the class of the value
      * @param sup the value supplier to be present
-     * @return an {@code SafeOpt} with the value with {@code SafeOpt} present,
-     * or an empty {@code SafeOpt} if supplier or it's value is null or
-     * {@code SafeOpt} with exception. If exception occurred anywhere, then it
-     * will be captured and empty {@code SafeOpt} with such exception will be
-     * returned
+     * @return an {@code SafeOptOld} with the value present, or an empty
+     * {@code SafeOptOld} if supplier or it's value is null. If exception occurred
+     * anywhere, then it will be captured and empty {@code SafeOptOld} with such
+     * exception will be returned
      */
-    public static <T> SafeOpt<T> ofFlatGet(UncheckedSupplier<? extends SafeOpt<T>> sup) {
+    public static <T> SafeOptOld<T> ofGet(UncheckedSupplier<? extends T> sup) {
         Objects.requireNonNull(sup);
-        try {
-            SafeOpt<T> get = sup.getUnchecked();
-            if (get == null) {
-                return SafeOpt.empty();
-            } else {
-                return get;
-            }
-        } catch (Throwable t) {
-            return new SafeOptVal<>(null, NestedException.unwrap(t));
-        }
+        return READY.map(m -> sup.getUnchecked());
+    }
+    
+    /**
+     * Returns an {@code SafeOptOld} with the specified present non-null value.
+     *
+     * @param <T> the class of the value
+     * @param sup the value supplier to be present
+     * @return an {@code SafeOptOld} with the value with {@code SafeOptOld} present, or an empty
+     * {@code SafeOptOld} if supplier or it's value is null or {@code SafeOptOld} with exception. If exception occurred
+     * anywhere, then it will be captured and empty {@code SafeOptOld} with such
+     * exception will be returned
+     */
+    public static <T> SafeOptOld<T> ofFlatGet(UncheckedSupplier<? extends SafeOptOld<T>> sup) {
+        Objects.requireNonNull(sup);
+        return READY.flatMap(m -> sup.get());
     }
 
     /**
-     * Returns an empty {@code SafeOpt} instance.
+     * Returns an empty {@code SafeOptOld} instance.
      *
      * @param <T> Type of the non-existent value
-     * @return an empty {@code SafeOpt}
+     * @return an empty {@code SafeOptOld}
      */
-    public static <T> SafeOpt<T> empty() {
-        return (SafeOpt<T>) SafeOptVal.empty;
+    public static <T> SafeOptOld<T> empty() {
+        return (SafeOptOld<T>) EMPTY;
     }
 
     /**
-     * Returns an empty {@code SafeOpt} instance with given error. Error must be
+     * Returns an empty {@code SafeOptOld} instance with given error. Error must be
      * provided.
      *
      * @param <T> Type of the non-existent value
      * @param error
-     * @return an empty {@code SafeOpt} with an error.
+     * @return an empty {@code SafeOptOld} with an error.
      */
-    public static <T> SafeOpt<T> error(Throwable error) {
-        return new SafeOptVal<>(null, Objects.requireNonNull(error));
+    public static <T> SafeOptOld<T> error(Throwable error) {
+        return new SafeOptOld<>(null, Objects.requireNonNull(error));
+    }
+
+    private static <T> SafeOptOld<T> errorOrEmpty(Throwable error) {
+        return error == null ? empty() : new SafeOptOld<>(null, error);
     }
 
     /**
-     * Returns an {@code SafeOpt} describing the specified value, if non-null,
-     * otherwise returns an empty {@code SafeOpt}.
+     * Returns an {@code SafeOptOld} describing the specified value, if non-null,
+     * otherwise returns an empty {@code Optional}.
      *
      * @param <T> the class of the value
      * @param val the possibly-null value to describe
-     * @return an {@code SafeOpt} with a present value if the specified value is
-     * non-null, otherwise an empty {@code SafeOpt}
+     * @return an {@code SafeOptOld} with a present value if the specified value is
+     * non-null, otherwise an empty {@code Optional}
      */
-    public static <T> SafeOpt<T> ofNullable(T val) {
-        return val == null ? SafeOpt.empty() : new SafeOptVal<>(val, null);
+    public static <T> SafeOptOld<T> ofNullable(T val) {
+        return val == null ? SafeOptOld.empty() : new SafeOptOld(val, null);
     }
 
     /**
-     * Returns an {@code SafeOpt} based on the specified future. Every possible
-     * operation is lazily evaluated and the result is only collapsed when
-     * needed.
+     * Simple mapping from {@code Optional} to {@code SafeOptOld}
      *
      * @param <T>
-     * @param future
+     * @param opt
      * @return
      */
-    public static <T> SafeOpt<T> ofFuture(Future<T> future) {
-        Objects.requireNonNull(future);
-        return new SafeOptLazy<>(SafeOpt.of(future), f -> f.map(Future::get));
+    public static <T> SafeOptOld<T> ofOptional(Optional<? extends T> opt) {
+        if (opt == null) {
+            return SafeOptOld.empty();
+        }
+        return opt.isPresent() ? SafeOptOld.of(opt.get()) : SafeOptOld.empty();
     }
 
     /**
-     * Returns an {@code SafeOpt} based on the specified value. Every possible
-     * operation is lazily evaluated and the result is only collapsed when
-     * needed.
-     *
-     * @param <T>
-     * @param val
-     * @return
-     */
-    public static <T> SafeOpt<T> ofLazy(T val) {
-        Objects.requireNonNull(val);
-        return new SafeOptLazy<>(val, Function.identity());
-    }
-
-    /**
-     * Returns an {@code Optional} of current {@code SafeOpt}. This operation
+     * Returns an {@code Optional} of current {@code SafeOptOld}. This operation
      * prompts re-throwing previously caught exception (if one exists).
      *
      * @return an {@code Optional} with a present value if the specified value
      * is non-null, otherwise an empty {@code Optional}
      */
-    public default Optional<T> asOptional() throws NestedException {
+    public Optional<T> asOptional() throws NestedException {
         return throwIfErrorAsNested().ignoringExceptionOptional();
     }
 
     /**
-     * Returns an {@code Optional} of current {@code SafeOpt}. This operation
+     * Returns an {@code Optional} of current {@code SafeOptOld}. This operation
      * ignores previously caught exception (if one exists).
      *
      * @return an {@code Optional} with a present value if the specified value
      * is non-null, otherwise an empty {@code Optional}
      */
-    public default Optional<T> ignoringExceptionOptional() {
-        return Optional.ofNullable(rawValue());
+    public Optional<T> ignoringExceptionOptional() {
+        return Optional.ofNullable(val);
     }
-    
-    public <A> SafeOpt<A> produceNew(A rawValue, Throwable rawException);
-    
-    public default <A> SafeOpt<A> produceError(Throwable rawException) {
-        return rawException == null ? produceNew(null, null) : produceNew(null, NestedException.unwrap(rawException));
-    }
-    
-    public default <A> SafeOpt<A> produceEmpty() {
-        return produceNew(null, null);
-    }
-    
-    public T rawValue();
-    
-    public Throwable rawException();
 
     /**
      * Return {@code true} if there is a value present, otherwise {@code false}.
      *
      * @return {@code true} if there is a value present, otherwise {@code false}
      */
-    public default boolean isPresent() {
-        return rawValue() != null;
+    public boolean isPresent() {
+        return val != null;
     }
 
     /**
@@ -246,8 +208,8 @@ public interface SafeOpt<T> {
      * @return {@code true} if there is a exception present, otherwise
      * {@code false}
      */
-    public default boolean hasError() {
-        return rawException() != null;
+    public boolean hasError() {
+        return threw != null;
     }
 
     /**
@@ -255,7 +217,7 @@ public interface SafeOpt<T> {
      * @return {@code true} if there is a exception or value present, otherwise
      * {@code false}
      */
-    public default boolean hasValueOrError() {
+    public boolean hasValueOrError() {
         return isPresent() || hasError();
     }
 
@@ -266,8 +228,8 @@ public interface SafeOpt<T> {
      * @return {@code true} if there is no value present, otherwise
      * {@code false}
      */
-    public default boolean isEmpty() {
-        return !isPresent();
+    public boolean isEmpty() {
+        return val == null;
     }
 
     /**
@@ -279,9 +241,9 @@ public interface SafeOpt<T> {
      * @throws NullPointerException if value is present and {@code consumer} is
      * null
      */
-    public default SafeOpt<T> ifPresent(Consumer<? super T> consumer) {
+    public SafeOptOld<T> ifPresent(Consumer<? super T> consumer) {
         if (isPresent()) {
-            consumer.accept(rawValue());
+            consumer.accept(val);
         }
         return this;
     }
@@ -298,9 +260,9 @@ public interface SafeOpt<T> {
      * is {@code null}, or no value is present and the given empty-based action
      * is {@code null}.
      */
-    public default SafeOpt<T> ifPresentOrElse(Consumer<? super T> action, Runnable emptyAction) {
+    public SafeOptOld<T> ifPresentOrElse(Consumer<? super T> action, Runnable emptyAction) {
         if (isPresent()) {
-            action.accept(rawValue());
+            action.accept(val);
         } else {
             emptyAction.run();
         }
@@ -319,76 +281,76 @@ public interface SafeOpt<T> {
      * is {@code null}. It is up to the caller to ensure that a passed default
      * value is not null.
      */
-    public default SafeOpt<T> ifPresentOrDefault(T def, Consumer<? super T> action) {
-        action.accept(isPresent() ? rawValue() : def);
+    public SafeOptOld<T> ifPresentOrDefault(T def, Consumer<? super T> action) {
+        action.accept(isPresent() ? val : def);
         return this;
     }
 
     /**
      * If a value is present, and the value matches the given predicate, return
-     * an {@code SafeOpt} describing the value, otherwise return an empty
-     * {@code SafeOpt}. If any exception occurs inside predicate, just returns
-     * empty {@code SafeOpt} with captured exception.
+     * an {@code SafeOptOld} describing the value, otherwise return an empty
+     * {@code SafeOptOld}. If any exception occurs inside predicate, just returns
+     * empty {@code SafeOptOld} with captured exception.
      *
      * @param predicate a predicate to apply to the value, if present
-     * @return an {@code SafeOpt} describing the value of this {@code SafeOpt}
+     * @return an {@code SafeOptOld} describing the value of this {@code SafeOptOld}
      * if a value is present and the value matches the given predicate,
-     * otherwise an empty {@code SafeOpt}
+     * otherwise an empty {@code SafeOptOld}
      * @throws NullPointerException if the predicate is null
      */
-    public default SafeOpt<T> filter(Predicate<? super T> predicate) {
+    public SafeOptOld<T> filter(Predicate<? super T> predicate) {
         Objects.requireNonNull(predicate, "Null predicate");
         if (!isPresent()) {
-            return this;
+            return SafeOptOld.errorOrEmpty(threw);
         } else {
             try {
-                return predicate.test(rawValue()) ? this : produceEmpty();
+                return predicate.test(val) ? this : empty();
             } catch (Throwable t) {
-                return produceError(t);
+                return SafeOptOld.errorOrEmpty(NestedException.unwrap(t));
             }
         }
     }
 
     /**
      * If a value is present, apply the provided mapping function to it, and if
-     * the result is non-null, return an {@code SafeOpt} describing the result.
-     * Otherwise return an empty {@code SafeOpt}. If any exception occurs, just
-     * returns empty {@code SafeOpt} with captured exception.
+     * the result is non-null, return an {@code SafeOptOld} describing the result.
+     * Otherwise return an empty {@code SafeOptOld}. If any exception occurs, just
+     * returns empty {@code SafeOptOld} with captured exception.
      *
      * @param <U> The type of the result of the mapping function
      * @param mapper a mapping function to apply to the value, if present
-     * @return an {@code SafeOpt} describing the result of applying a mapping
-     * function to the value of this {@code SafeOpt}, if a value is present,
-     * otherwise an empty {@code SafeOpt}
+     * @return an {@code SafeOptOld} describing the result of applying a mapping
+     * function to the value of this {@code SafeOptOld}, if a value is present,
+     * otherwise an empty {@code SafeOptOld}
      * @throws NullPointerException if the mapping function is null
      */
-    public default <U> SafeOpt<U> map(Function<? super T, ? extends U> mapper) {
+    public <U> SafeOptOld<U> map(Function<? super T, ? extends U> mapper) {
         Objects.requireNonNull(mapper, "Null map function");
         if (!isPresent()) {
-            return produceError(rawException());
+            return SafeOptOld.errorOrEmpty(threw);
         } else {
             try {
-                return produceNew(mapper.apply(rawValue()), null);
+                return SafeOptOld.ofNullable(mapper.apply(val));
             } catch (Throwable t) {
-                return produceError(t);
+                return SafeOptOld.errorOrEmpty(NestedException.unwrap(t));
             }
         }
     }
 
     /**
      * If a value is present, apply the provided mapping function to it, and if
-     * the result is non-null, return an {@code SafeOpt} describing the result.
-     * Otherwise return an empty {@code SafeOpt}. If any exception occurs, just
-     * returns empty {@code SafeOpt} with captured exception.
+     * the result is non-null, return an {@code SafeOptOld} describing the result.
+     * Otherwise return an empty {@code SafeOptOld}. If any exception occurs, just
+     * returns empty {@code SafeOptOld} with captured exception.
      *
      * @param <U> The type of the result of the mapping function
      * @param mapper a mapping function to apply to the value, if present
-     * @return an {@code SafeOpt} describing the result of applying a mapping
-     * function to the value of this {@code SafeOpt}, if a value is present,
-     * otherwise an empty {@code SafeOpt}
+     * @return an {@code SafeOptOld} describing the result of applying a mapping
+     * function to the value of this {@code SafeOptOld}, if a value is present,
+     * otherwise an empty {@code SafeOptOld}
      * @throws NullPointerException if the mapping function is null
      */
-    public default <U> SafeOpt<U> map(UncheckedFunction<? super T, ? extends U> mapper) {
+    public <U> SafeOptOld<U> map(UncheckedFunction<? super T, ? extends U> mapper) {
         return map((Function<? super T, ? extends U>) mapper);
     }
 
@@ -397,10 +359,10 @@ public interface SafeOpt<T> {
      *
      * @param <U> The type of the result of the mapping function
      * @param clazz instance to filter value
-     * @return an {@code SafeOpt} of given action aggregation
+     * @return an {@code SafeOptOld} of given action aggregation
      * @throws NullPointerException if the provided class is null
      */
-    public default <U> SafeOpt<U> select(Class<? extends U> clazz) {
+    public <U> SafeOptOld<U> select(Class<? extends U> clazz) {
         Objects.requireNonNull(clazz);
         return filter(clazz::isInstance).map(t -> (U) t);
     }
@@ -412,40 +374,40 @@ public interface SafeOpt<T> {
      * @param mapper
      * @return
      */
-    public default <U> SafeOpt<U> flatMap(UncheckedFunction<? super T, ? extends SafeOpt<? extends U>> mapper) {
-        return flatMap((Function<? super T, ? extends SafeOpt<? extends U>>) mapper);
+    public <U> SafeOptOld<U> flatMap(UncheckedFunction<? super T, ? extends SafeOptOld<? extends U>> mapper) {
+        return flatMap((Function<? super T, ? extends SafeOptOld<? extends U>>) mapper);
     }
 
     /**
-     * If a value is present, apply the provided {@code SafeOpt}-bearing mapping
+     * If a value is present, apply the provided {@code SafeOptOld}-bearing mapping
      * function to it, return that result, otherwise return an empty
-     * {@code SafeOpt}. This method is similar to {@link #map(Function)}, but
-     * the provided mapper is one whose result is already an {@code SafeOpt},
+     * {@code SafeOptOld}. This method is similar to {@link #map(Function)}, but
+     * the provided mapper is one whose result is already an {@code SafeOptOld},
      * and if invoked, {@code flatMap} does not wrap it with an additional
-     * {@code SafeOpt}.
+     * {@code SafeOptOld}.
      *
-     * @param <U> The type parameter to the {@code SafeOpt} returned by
+     * @param <U> The type parameter to the {@code SafeOptOld} returned by
      * @param mapper a mapping function to apply to the value, if present the
      * mapping function
-     * @return the result of applying an {@code SafeOpt}-bearing mapping
-     * function to the value of this {@code SafeOpt}, if a value is present,
-     * otherwise an empty {@code SafeOpt}
+     * @return the result of applying an {@code SafeOptOld}-bearing mapping
+     * function to the value of this {@code SafeOptOld}, if a value is present,
+     * otherwise an empty {@code SafeOptOld}
      * @throws NullPointerException if the mapping function is null
      */
-    public default <U> SafeOpt<U> flatMap(Function<? super T, ? extends SafeOpt<? extends U>> mapper) {
+    public <U> SafeOptOld<U> flatMap(Function<? super T, ? extends SafeOptOld<? extends U>> mapper) {
         Objects.requireNonNull(mapper, "Mapping function was null");
         if (!isPresent()) {
-            return produceNew(null, rawException());
+            return SafeOptOld.errorOrEmpty(threw);
         } else {
             try {
-                SafeOpt<? extends U> opt = mapper.apply(rawValue());
+                SafeOptOld<? extends U> opt = mapper.apply(val);
                 if (opt == null) {
-                    return produceEmpty();
+                    return SafeOptOld.empty();
                 }
-                return produceNew(opt.rawValue(), rawException());
-                
+                return new SafeOptOld<>(opt.val, opt.threw);
+
             } catch (Throwable t) {
-                return produceError(t);
+                return SafeOptOld.errorOrEmpty(NestedException.unwrap(t));
             }
         }
     }
@@ -453,34 +415,28 @@ public interface SafeOpt<T> {
     /**
      * If a value is present, apply the provided {@code Optional}-bearing
      * mapping function to it, return that result, otherwise return an empty
-     * {@code SafeOpt}. This method is similar to {@link #map(Function)}, but
-     * the provided mapper is one whose result is already an {@code SafeOpt},
+     * {@code SafeOptOld}. This method is similar to {@link #map(Function)}, but
+     * the provided mapper is one whose result is already an {@code SafeOptOld},
      * and if invoked, {@code flatMap} does not wrap it with an additional
-     * {@code SafeOpt}.
+     * {@code SafeOptOld}.
      *
-     * @param <U> The type parameter to the {@code SafeOpt} returned by
+     * @param <U> The type parameter to the {@code SafeOptOld} returned by
      * @param mapper a mapping function to apply to the value, if present the
      * mapping function
      * @return the result of applying an {@code Optional}-bearing mapping
-     * function to the value of this {@code SafeOpt}, if a value is present,
-     * otherwise an empty {@code SafeOpt}
+     * function to the value of this {@code SafeOptOld}, if a value is present,
+     * otherwise an empty {@code SafeOptOld}
      * @throws NullPointerException if the mapping function is null
      */
-    public default <U> SafeOpt<U> flatMapOpt(Function<? super T, ? extends Optional<? extends U>> mapper) {
+    public <U> SafeOptOld<U> flatMapOpt(Function<? super T, ? extends Optional<? extends U>> mapper) {
         Objects.requireNonNull(mapper, "Mapping function was null");
         if (!isPresent()) {
-            return produceError(rawException());
+            return SafeOptOld.errorOrEmpty(threw);
         } else {
             try {
-                Optional<? extends U> apply = mapper.apply(rawValue());
-                if (apply == null || !apply.isPresent()) {
-                    return produceEmpty();
-                } else {
-                    return produceNew(apply.get(), null);
-                }
-                
+                return SafeOptOld.ofOptional(mapper.apply(val));
             } catch (Throwable t) {
-                return produceError(t);
+                return SafeOptOld.errorOrEmpty(NestedException.unwrap(t));
             }
         }
     }
@@ -492,58 +448,45 @@ public interface SafeOpt<T> {
      * @param mapper
      * @return
      */
-    public default <U> SafeOpt<U> flatMapOpt(UncheckedFunction<? super T, ? extends Optional<? extends U>> mapper) {
+    public <U> SafeOptOld<U> flatMapOpt(UncheckedFunction<? super T, ? extends Optional<? extends U>> mapper) {
         return flatMapOpt((Function<? super T, ? extends Optional<? extends U>>) mapper);
     }
 
     /**
-     * If a value is present, returns an {@code SafeOpt} describing the value,
-     * otherwise returns an {@code SafeOpt} produced by the supplying function.
+     * If a value is present, returns an {@code SafeOptOld} describing the value,
+     * otherwise returns an {@code SafeOptOld} produced by the supplying function.
      *
      * @param supplier the supplying function that produces an {@code Optional}
-     * @return returns an {@code SafeOpt} describing the value of this
-     * {@code SafeOpt}, if a value is present, otherwise an wrapped
-     * {@code SafeOpt} produced by the supplying function.
+     * @return returns an {@code SafeOptOld} describing the value of this
+     * {@code SafeOptOld}, if a value is present, otherwise an wrapped
+     * {@code SafeOptOld} produced by the supplying function.
      * @throws NullPointerException if the supplying function is {@code null}
      */
-    public default SafeOpt<T> orGetOpt(Supplier<? extends Optional<? extends T>> supplier) {
+    public SafeOptOld<T> orGetOpt(Supplier<? extends Optional<? extends T>> supplier) {
         Objects.requireNonNull(supplier, "Supplier was null");
         if (isPresent()) {
             return this;
         } else {
-            try {
-                Optional<? extends T> get = supplier.get();
-                if (get == null || !get.isPresent()) {
-                    return this;
-                } else {
-                    return produceNew(get.get(), null);
-                }
-            } catch (Throwable t) {
-                return produceError(t);
-            }
+            return SafeOptOld.ofOptional(supplier.get());
         }
     }
 
     /**
-     * If a value is present, returns an {@code SafeOpt} describing the value,
-     * otherwise returns an {@code SafeOpt} produced by the supplying function.
+     * If a value is present, returns an {@code SafeOptOld} describing the value,
+     * otherwise returns an {@code SafeOptOld} produced by the supplying function.
      *
-     * @param supplier the supplying function that produces an {@code SafeOpt}
-     * @return returns an {@code SafeOpt} describing the value of this
-     * {@code SafeOpt}, if a value is present, otherwise an wrapped
-     * {@code SafeOpt} produced by the supplying function.
+     * @param supplier the supplying function that produces an {@code SafeOptOld}
+     * @return returns an {@code SafeOptOld} describing the value of this
+     * {@code SafeOptOld}, if a value is present, otherwise an wrapped
+     * {@code SafeOptOld} produced by the supplying function.
      * @throws NullPointerException if the supplying function is {@code null}
      */
-    public default SafeOpt<T> orGet(Supplier<? extends T> supplier) {
+    public SafeOptOld<T> orGet(Supplier<? extends T> supplier) {
         Objects.requireNonNull(supplier, "Supplier was null");
         if (isPresent()) {
             return this;
         } else {
-            try {
-                return produceNew(supplier.get(), null);
-            } catch (Throwable t) {
-                return produceError(t);
-            }
+            return SafeOptOld.READY.map(m -> supplier.get());
         }
     }
 
@@ -555,27 +498,27 @@ public interface SafeOpt<T> {
      * @param errorCons
      * @return the same unmodified object
      */
-    public default SafeOpt<T> peekError(Consumer<Throwable> errorCons) {
+    public SafeOptOld<T> peekError(Consumer<Throwable> errorCons) {
         Objects.requireNonNull(errorCons);
         if (hasError()) {
-            errorCons.accept(rawException());
+            errorCons.accept(threw);
         }
         return this;
     }
 
     /**
-     * Results in empty instance of {@link SafeOpt}, but keeps the error if one
+     * Results in empty instance of {@link SafeOptOld}, but keeps the error if one
      * is present.
      *
      * @return
      */
-    public default SafeOpt<Void> keepError() {
-        return produceError(rawException());
+    public SafeOptOld<Void> keepError() {
+        return SafeOptOld.errorOrEmpty(threw);
     }
 
     /**
-     * If both values are present (in this {@code SafeOpt} and provided
-     * {@code SafeOpt with} object), then proceed with combining those values in
+     * If both values are present (in this {@code SafeOptOld} and provided
+     * {@code SafeOptOld with} object), then proceed with combining those values in
      * a safe manner, capturing any exceptions. With and mapper must be
      * explicitly not null.
      *
@@ -585,13 +528,13 @@ public interface SafeOpt<T> {
      * @param mapper
      * @return
      */
-    public default <U, P> SafeOpt<U> mapCombine(SafeOpt<? extends P> with, UncheckedBiFunction<? super T, ? super P, ? extends U> mapper) {
+    public <U, P> SafeOptOld<U> mapCombine(SafeOptOld<? extends P> with, UncheckedBiFunction<? super T, ? super P, ? extends U> mapper) {
         return mapCombine(with, (BiFunction<T, P, U>) mapper);
     }
 
     /**
-     * If both values are present (in this {@code SafeOpt} and provided
-     * {@code SafeOpt with} object, then proceed with combining those values in
+     * If both values are present (in this {@code SafeOptOld} and provided
+     * {@code SafeOptOld with} object, then proceed with combining those values in
      * a safe manner, capturing any exceptions. With and mapper must be
      * explicitly not null.
      *
@@ -601,20 +544,19 @@ public interface SafeOpt<T> {
      * @param mapper
      * @return
      */
-    public default <U, P> SafeOpt<U> mapCombine(SafeOpt<? extends P> with, BiFunction<? super T, ? super P, ? extends U> mapper) {
+    public <U, P> SafeOptOld<U> mapCombine(SafeOptOld<? extends P> with, BiFunction<? super T, ? super P, ? extends U> mapper) {
         Objects.requireNonNull(with, "Null with object");
         Objects.requireNonNull(mapper, "Null map function");
-        
+
         if (!isPresent()) {
-            return produceError(rawException());
+            return SafeOptOld.errorOrEmpty(threw);
         } else if (!with.isPresent()) {
-            return produceError(with.rawException());
+            return SafeOptOld.errorOrEmpty(with.threw);
         } else {
             try {
-                U apply = mapper.apply(rawValue(), with.rawValue());
-                return produceNew(apply, null);
+                return SafeOptOld.ofNullable(mapper.apply(val, with.val));
             } catch (Throwable t) {
-                return produceError(t);
+                return SafeOptOld.errorOrEmpty(NestedException.unwrap(t));
             }
         }
     }
@@ -626,7 +568,7 @@ public interface SafeOpt<T> {
      *
      * @return the optional value as a {@code Stream}
      */
-    public default Stream<T> stream() throws NestedException {
+    public Stream<T> stream() throws NestedException {
         return throwIfErrorAsNested().ignoringExceptionStream();
     }
 
@@ -636,27 +578,44 @@ public interface SafeOpt<T> {
      *
      * @return the optional value as a {@code Stream}
      */
-    public default Stream<T> ignoringExceptionStream() {
+    public Stream<T> ignoringExceptionStream() {
         if (!isPresent()) {
             return Stream.empty();
         } else {
-            return Stream.of(rawValue());
+            return Stream.of(val);
         }
     }
 
     /**
-     * If a value is present in this {@code SafeOpt}, returns the value,
+     * Select first {@code SafeOptOld} which is present, otherwise return empty;
+     *
+     * @param <U>
+     * @param options
+     * @return
+     */
+    public static <U> SafeOptOld<U> selectFirstPresent(SafeOptOld<U>... options) {
+        Objects.requireNonNull(options, "Null options");
+        for (SafeOptOld<U> opt : options) {
+            if (opt.isPresent()) {
+                return opt;
+            }
+        }
+        return SafeOptOld.empty();
+    }
+
+    /**
+     * If a value is present in this {@code SafeOptOld}, returns the value,
      * otherwise throws {@code NoSuchElementException}. Also, throws any caught
      * exception wrapped in {@link NestedException}.
      *
      * @return the non-null value held by this {@code Optional}
      * @throws NoSuchElementException if there is no value present
      *
-     * @see SafeOpt#isPresent()
+     * @see SafeOptOld#isPresent()
      */
-    public default T get() {
+    public T get() {
         if (isPresent()) {
-            return rawValue();
+            return val;
         }
         throwIfErrorAsNested();
         throw new NoSuchElementException("No value present");
@@ -669,8 +628,7 @@ public interface SafeOpt<T> {
      * be null
      * @return the value, if present, otherwise {@code other}
      */
-    public default T orElse(T other) {
-        T val = rawValue();
+    public T orElse(T other) {
         return val != null ? val : other;
     }
 
@@ -684,9 +642,8 @@ public interface SafeOpt<T> {
      * @throws NullPointerException if value is not present and {@code other} is
      * null
      */
-    public default T orElseGet(Supplier<? extends T> other) {
-        T val = rawValue();
-        return val != null ? val : Objects.requireNonNull(other, "Null supplier").get();
+    public T orElseGet(Supplier<? extends T> other) {
+        return val != null ? val : other.get();
     }
 
     /**
@@ -705,8 +662,7 @@ public interface SafeOpt<T> {
      * @throws NullPointerException if no value is present and
      * {@code exceptionSupplier} is null
      */
-    public default <X extends Throwable> T orElseThrow(Supplier<? extends X> exceptionSupplier) throws X {
-        T val = rawValue();
+    public <X extends Throwable> T orElseThrow(Supplier<? extends X> exceptionSupplier) throws X {
         if (val != null) {
             return val;
         } else {
@@ -724,7 +680,7 @@ public interface SafeOpt<T> {
      * @return the present value
      * @throws Ex if there is such exception
      */
-    public default <Ex extends Throwable> T throwIfErrorOrGet(Class<Ex> type) throws Ex {
+    public <Ex extends Throwable> T throwIfErrorOrGet(Class<Ex> type) throws Ex {
         Objects.requireNonNull(type);
         return throwIfError(type).get();
     }
@@ -733,12 +689,11 @@ public interface SafeOpt<T> {
      * If an error has occurred, terminate by throwing such error wrapped in
      * NestedException
      *
-     * @return returns an {@code SafeOpt} describing the value of this
-     * {@code SafeOpt}, if a value is present
+     * @return returns an {@code SafeOptOld} describing the value of this
+     * {@code SafeOptOld}, if a value is present
      * @throws NestedException if any error was present
      */
-    public default SafeOpt<T> throwIfErrorAsNested() {
-        Throwable threw = rawException();
+    public SafeOptOld<T> throwIfErrorAsNested() {
         if (threw != null) {
             throw NestedException.of(threw);
         }
@@ -749,11 +704,11 @@ public interface SafeOpt<T> {
      * If an {@link RuntimeException} has occurred, terminate by throwing such
      * exception.
      *
-     * @return returns an {@code SafeOpt} describing the value of this
-     * {@code SafeOpt}, if a value is present
+     * @return returns an {@code SafeOptOld} describing the value of this
+     * {@code SafeOptOld}, if a value is present
      * @throws RuntimeException if any that kind of error was present
      */
-    public default SafeOpt<T> throwIfErrorRuntime() {
+    public SafeOptOld<T> throwIfErrorRuntime() {
         return throwIfError(RuntimeException.class);
     }
 
@@ -766,9 +721,9 @@ public interface SafeOpt<T> {
      * @return this object
      * @throws Ex if there is such exception
      */
-    public default <Ex extends Throwable> SafeOpt<T> throwIfError(Class<Ex> type) throws Ex {
+    public <Ex extends Throwable> SafeOptOld<T> throwIfError(Class<Ex> type) throws Ex {
         Objects.requireNonNull(type);
-        SafeOpt<Ex> select = getError().select(type);
+        SafeOptOld<Ex> select = getError().select(type);
         if (select.isPresent()) {
             throw select.get();
         }
@@ -785,9 +740,9 @@ public interface SafeOpt<T> {
      * @return this object
      * @throws Ex if there is such exception
      */
-    public default <Ex extends Throwable> SafeOpt<T> throwIfErrorUnwrapping(Class<Ex> type) throws Ex {
-        SafeOpt<Throwable> error = getError();
-        SafeOpt<Ex> select = error.select(type);
+    public <Ex extends Throwable> SafeOptOld<T> throwIfErrorUnwrapping(Class<Ex> type) throws Ex {
+        SafeOptOld<Throwable> error = getError();
+        SafeOptOld<Ex> select = error.select(type);
         if (select.isPresent()) {
             throw select.get();
         } else if (error.isPresent()) {
@@ -797,22 +752,22 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Shorthand for {@link SafeOpt#throwIfErrorAsNested() } and
+     * Shorthand for {@link SafeOptOld#throwIfErrorAsNested() } and
      * {@code orElse(null)}
      *
      * @return
      */
-    public default T throwNestedOrNull() {
+    public T throwNestedOrNull() {
         return throwIfErrorAsNested().orElse(null);
     }
-
+    
     /**
-     * Shorthand for {@link SafeOpt#throwIfErrorAsNested() } and
+     * Shorthand for {@link SafeOptOld#throwIfErrorAsNested() } and
      * {@code orElse(Object)}
      *
      * @return
      */
-    public default T throwNestedOr(T val) {
+    public T throwNestedOr(T val) {
         return throwIfErrorAsNested().orElse(val);
     }
 
@@ -821,7 +776,7 @@ public interface SafeOpt<T> {
      *
      * @return
      */
-    public default T orNull() {
+    public T orNull() {
         return orElse(null);
     }
 
@@ -831,17 +786,57 @@ public interface SafeOpt<T> {
      * @param predicate
      * @return
      */
-    public default boolean isPresentWhen(Predicate<? super T> predicate) {
+    public boolean isPresentWhen(Predicate<? super T> predicate) {
         return filter(predicate).isPresent();
     }
 
+    @Override
+    public int hashCode() {
+        int hash = 7;
+        hash = 23 * hash + Objects.hashCode(this.val);
+        hash = 23 * hash + Objects.hashCode(this.threw);
+        return hash;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (obj == null) {
+            return false;
+        }
+        if (getClass() != obj.getClass()) {
+            return false;
+        }
+        final SafeOptOld<?> other = (SafeOptOld<?>) obj;
+        if (!Objects.equals(this.val, other.val)) {
+            return false;
+        }
+        if (!Objects.equals(this.threw, other.threw)) {
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public String toString() {
+        if (val != null) {
+            return String.format("SafeOptOld[%s]", val);
+        }
+        if (threw != null) {
+            return String.format("SafeOptOld.error[%s]", threw);
+        }
+        return "SafeOptOld.empty";
+    }
+
     /**
-     * {@link SafeOpt} instance with optional {@link Throwable} error inside.
+     * {@link SafeOptOld} instance with optional {@link Throwable} error inside.
      *
      * @return
      */
-    public default SafeOpt<Throwable> getError() {
-        return produceNew(rawException(), null);
+    public SafeOptOld<Throwable> getError() {
+        return SafeOptOld.ofNullable(threw);
     }
-    
+
 }
