@@ -442,7 +442,7 @@ public interface SafeOpt<T> {
                 if (opt == null) {
                     return produceEmpty();
                 }
-                return produceNew(opt.rawValue(), rawException());
+                return produceNew(opt.rawValue(), opt.rawException());
                 
             } catch (Throwable t) {
                 return produceError(t);
