@@ -26,7 +26,7 @@ public class SafeOptTest {
     public void test() {
         SafeOpt<Number> num = SafeOpt.of(10L).select(Long.class);
 
-        assertThat(num.isPresent());
+        assertThat(num.isPresent()).isTrue();
 
         SafeOpt<Integer> map = SafeOpt.of(10).map(m -> m * 10);
         Integer expected = 10 * 10;
@@ -35,11 +35,11 @@ public class SafeOptTest {
         SafeOpt<String> empty = SafeOpt.empty().map(m -> m + "");
 
         NullInt nullInt = new NullInt();
-        assertThat(empty.isEmpty());
-        assertThat(empty.getError().isEmpty());
+        assertThat(empty.isEmpty()).isTrue();
+        assertThat(empty.getError().isEmpty()).isTrue();
         SafeOpt<Object> errored = SafeOpt.error(new PassableException("Failed"));
-        assertThat(errored.isEmpty());
-        assertThat(errored.getError().isPresent());
+        assertThat(errored.isEmpty()).isTrue();
+        assertThat(errored.getError().isPresent()).isTrue();
 
         SafeOpt<Integer> mapNull = map.map(m -> nullInt.get()); // supposed to be null
         SafeOpt<Integer> mapEx = map.map(m -> 0 + nullInt.get());
