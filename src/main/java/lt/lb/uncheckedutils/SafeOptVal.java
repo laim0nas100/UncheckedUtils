@@ -29,12 +29,34 @@ public class SafeOptVal<T> extends SafeOptBase<T> {
 
     @Override
     public <A> SafeOpt<A> produceNew(A rawValue, Throwable rawException) {
-        if (rawValue != null && rawException != null) {
-            throw new IllegalArgumentException("rawValue AND rawException cannot both be present");
-        } else if (rawValue == null && rawException == null) {
+        if (rawValue != null && rawException == null) { // most often case
+            if (rawValue == val) { // reuse
+                return (SafeOpt<A>) this;
+            }
+            return new SafeOptVal<>(rawValue, rawException);
+        } else if (rawValue == null && rawException == null) { // should not be used instead of produceEmpty
             return empty;
+        } else if (rawException == threw) {// reuse
+            return (SafeOpt<A>) this;
         }
         return new SafeOptVal<>(rawValue, rawException);
+
+    }
+
+    @Override
+    public <A> SafeOpt<A> produceEmpty() {
+        return empty;
+    }
+
+    @Override
+    public <A> SafeOpt<A> produceError(Throwable rawException) {
+        if (rawException == null) {
+            return empty;
+        }
+        if (rawException == threw) {
+            return (SafeOpt<A>) this;
+        }
+        return new SafeOptVal<>(null, NestedException.unwrap(rawException));
     }
 
     @Override

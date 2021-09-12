@@ -33,8 +33,6 @@ public class SafeOptLazy<S, T> extends SafeOptBase<T> {
     protected SafeOpt<T> collapsed;
     protected final AtomicBoolean inCollapse = new AtomicBoolean(false);
 
-    protected static final SafeOptLazy empty = new SafeOptLazy<>();
-
     protected SafeOptLazy(SafeOpt<S> initial, Function<SafeOpt<S>, SafeOpt<T>> function) {
         this.initial = Objects.requireNonNull(initial);
         this.function = Objects.requireNonNull(function);
@@ -57,7 +55,7 @@ public class SafeOptLazy<S, T> extends SafeOptBase<T> {
     }
 
     protected SafeOpt<T> collapse() {
-        if(collapsed != null){
+        if (collapsed != null) {
             return collapsed;
         }
         if (inCollapse.compareAndSet(false, true)) {
@@ -69,7 +67,7 @@ public class SafeOptLazy<S, T> extends SafeOptBase<T> {
     @Override
     public <A> SafeOpt<A> produceNew(A rawValue, Throwable rawException) {
         if (rawValue == null && rawException == null) {
-            return empty;
+            return new SafeOptLazy<>();
         }
         if (rawValue != null && rawException != null) {
             throw new IllegalArgumentException("rawValue AND rawException should not be present");
@@ -98,7 +96,7 @@ public class SafeOptLazy<S, T> extends SafeOptBase<T> {
 
     protected <O> SafeOpt<O> functor(Function<SafeOpt<T>, SafeOpt<O>> func) {
         if (collapsed != null) {
-            return new SafeOptLazy<>(collapsed, func);
+            return func.apply(collapsed);// no more lazy application after collapse
         }
         return new SafeOptLazy<>(initial, function.andThen(func));
     }
@@ -348,12 +346,15 @@ public class SafeOptLazy<S, T> extends SafeOptBase<T> {
 
     @Override
     public <A> SafeOpt<A> produceEmpty() {
-        return SafeOptLazy.empty;
+        return new SafeOptLazy<>();
     }
 
     @Override
     public <A> SafeOpt<A> produceError(Throwable rawException) {
-        return new SafeOptLazy<A, A>(rawException);
+        if (rawException == null) {
+            return produceEmpty();
+        }
+        return new SafeOptLazy<>(rawException);
     }
 
     @Override

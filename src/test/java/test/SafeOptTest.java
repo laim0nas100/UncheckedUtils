@@ -1,7 +1,11 @@
 package test;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
@@ -17,6 +21,7 @@ import org.junit.Test;
 public class SafeOptTest {
 
     public static class NullInt {
+
         public Integer get() {
             return null;
         }
@@ -62,12 +67,69 @@ public class SafeOptTest {
 
         nested.isThrownBy(() -> mapEx.throwIfErrorAsNested());
         nested.isThrownBy(() -> mapEx.get());
-        runtime.isThrownBy(()-> mapEx.throwIfErrorRuntime());
+        runtime.isThrownBy(() -> mapEx.throwIfErrorRuntime());
 
         assertThat(map.flatMapOpt(m -> Optional.ofNullable(m)).get()).isEqualTo(expected);
         assertThat(map.flatMap(m -> SafeOpt.ofNullable(m)).get()).isEqualTo(expected);
         assertThat(map.flatMapOpt(m -> SafeOpt.ofNullable(m).asOptional()).get()).isEqualTo(expected);
         assertThat(map.flatMap(m -> SafeOpt.error(new PassableException("Some error"))).getError().select(PassableException.class).isPresent()).isTrue();
 
+        List<String> states1 = new ArrayList<>();
+        List<String> states2 = new ArrayList<>();
+        SafeOpt<Integer> lazy = SafeOpt.ofLazy("10")
+                .map(Integer::parseInt)
+                .filter(f -> {
+                    states1.add("filter");
+                    return true;
+                })
+                .map(m -> {
+                    states1.add("map");
+                    return m;
+                })
+                .flatMap(m -> {
+                    states1.add("flatMap");
+                    return SafeOpt.of(m);
+                })
+                .flatMapOpt(m -> {
+                    states1.add("flatMapOpt");
+                    return Optional.of(m);
+                });
+
+        assertThat(states1).isEmpty();
+        lazy.orNull();
+        assertThat(states1).containsExactly("filter", "map", "flatMap", "flatMapOpt");
+        lazy
+                .filter(f -> {
+                    states2.add("filter");
+                    return true;
+                })
+                .map(m -> {
+                    states2.add("map");
+                    return m;
+                })
+                .flatMap(m -> {
+                    states2.add("flatMap");
+                    return SafeOpt.of(m);
+                })
+                .flatMapOpt(m -> {
+                    states2.add("flatMapOpt");
+                    return Optional.of(m);
+                });
+        assertThat(states2).containsExactlyElementsOf(states1);
+        lazy.orNull();
+        assertThat(states2).containsExactlyElementsOf(states1); //ensure  no double insterts
+        List<String> stateError = new ArrayList<>();
+        SafeOpt<Integer> peekError = SafeOpt.ofLazy("NaN").map(Integer::parseInt)
+                .filter(f -> {
+                    stateError.add("filter");
+                    return true;
+                })
+                .peekError(error -> {
+                    stateError.add("error");
+                });
+
+        assertThat(stateError).isEmpty();
+        peekError.orNull();// collapse
+        assertThat(stateError).containsExactly("error");
     }
 }
