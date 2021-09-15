@@ -11,7 +11,9 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import lt.lb.uncheckedutils.func.UncheckedBiFunction;
+import lt.lb.uncheckedutils.func.UncheckedConsumer;
 import lt.lb.uncheckedutils.func.UncheckedFunction;
+import lt.lb.uncheckedutils.func.UncheckedRunnable;
 import lt.lb.uncheckedutils.func.UncheckedSupplier;
 
 /**
@@ -274,16 +276,36 @@ public interface SafeOpt<T> {
      * If a value is present, invoke the specified consumer with the value,
      * otherwise do nothing.
      *
-     * @param consumer block to be executed if a value is present
+     * @param action block to be executed if a value is present
      * @return this object
      * @throws NullPointerException if value is present and {@code consumer} is
      * null
      */
-    public default SafeOpt<T> ifPresent(Consumer<? super T> consumer) {
-        if (isPresent()) {
-            consumer.accept(rawValue());
+    public default SafeOpt<T> peek(UncheckedConsumer<? super T> action) {
+        return peek((Consumer) action);
+    }
+
+    /**
+     * If a value is present, invoke the specified consumer with the value,
+     * otherwise do nothing.
+     *
+     * @param action block to be executed if a value is present
+     * @return this object
+     * @throws NullPointerException if value is present and {@code consumer} is
+     * null
+     */
+    public default SafeOpt<T> peek(Consumer<? super T> action) {
+        Objects.requireNonNull(action, "action cannot be null");
+        if (isEmpty()) {
+            return this;
         }
-        return this;
+        try {
+            T val = rawValue();
+            action.accept(val);
+            return produceNew(val, null);
+        } catch (Throwable th) {
+            return produceError(th);
+        }
     }
 
     /**
@@ -298,13 +320,69 @@ public interface SafeOpt<T> {
      * is {@code null}, or no value is present and the given empty-based action
      * is {@code null}.
      */
-    public default SafeOpt<T> ifPresentOrElse(Consumer<? super T> action, Runnable emptyAction) {
-        if (isPresent()) {
-            action.accept(rawValue());
-        } else {
-            emptyAction.run();
+    public default SafeOpt<T> peekOrElse(UncheckedConsumer<? super T> action, UncheckedRunnable emptyAction) {
+        return peekOrElse((Consumer) action, (Runnable) emptyAction);
+    }
+
+    /**
+     * If a value is present, performs the given action with the value,
+     * otherwise performs the given empty-based action.
+     *
+     * @param action the action to be performed, if a value is present
+     * @param emptyAction the empty-based action to be performed, if no value is
+     * present
+     * @return this object
+     * @throws NullPointerException if a value is present and the given action
+     * is {@code null}, or no value is present and the given empty-based action
+     * is {@code null}.
+     */
+    public default SafeOpt<T> peekOrElse(Consumer<? super T> action, UncheckedRunnable emptyAction) {
+        return peekOrElse(action, (Runnable) emptyAction);
+    }
+
+    /**
+     * If a value is present, performs the given action with the value,
+     * otherwise performs the given empty-based action.
+     *
+     * @param action the action to be performed, if a value is present
+     * @param emptyAction the empty-based action to be performed, if no value is
+     * present
+     * @return this object
+     * @throws NullPointerException if a value is present and the given action
+     * is {@code null}, or no value is present and the given empty-based action
+     * is {@code null}.
+     */
+    public default SafeOpt<T> peekOrElse(UncheckedConsumer<? super T> action, Runnable emptyAction) {
+        return peekOrElse((Consumer) action, emptyAction);
+    }
+
+    /**
+     * If a value is present, performs the given action with the value,
+     * otherwise performs the given empty-based action.
+     *
+     * @param action the action to be performed, if a value is present
+     * @param emptyAction the empty-based action to be performed, if no value is
+     * present
+     * @return this object
+     * @throws NullPointerException if a value is present and the given action
+     * is {@code null}, or no value is present and the given empty-based action
+     * is {@code null}.
+     */
+    public default SafeOpt<T> peekOrElse(Consumer<? super T> action, Runnable emptyAction) {
+        Objects.requireNonNull(action, "action cannot be null");
+        Objects.requireNonNull(emptyAction, "emptyAction cannot be null");
+        try {
+            if (isPresent()) {
+                T val = rawValue();
+                action.accept(val);
+                return produceNew(val, null);
+            } else {
+                emptyAction.run();
+                return produceEmpty();
+            }
+        } catch (Throwable th) {
+            return produceError(th);
         }
-        return this;
     }
 
     /**
@@ -319,9 +397,80 @@ public interface SafeOpt<T> {
      * is {@code null}. It is up to the caller to ensure that a passed default
      * value is not null.
      */
-    public default SafeOpt<T> ifPresentOrDefault(T def, Consumer<? super T> action) {
+    public default SafeOpt<T> peekOrDefault(T def, UncheckedConsumer<? super T> action) {
+        return peekOrDefault(def, (Consumer) action);
+    }
+
+    /**
+     * If a value is present, performs the given action with the value,
+     * otherwise performs the same action with the given default value. Whether
+     * exception has occurred is irrelevant.
+     *
+     * @param def default value
+     * @param action the action to be performed
+     * @return this object
+     * @throws NullPointerException if a value is present and the given action
+     * is {@code null}. It is up to the caller to ensure that a passed default
+     * value is not null.
+     */
+    public default SafeOpt<T> peekOrDefault(T def, Consumer<? super T> action) {
+        Objects.requireNonNull(action, "action cannot be null");
+        try {
+            T val = isPresent() ? rawValue() : def;
+            action.accept(val);
+            return produceNew(val, null);
+        } catch (Throwable th) {
+            return produceError(th);
+        }
+    }
+
+    /**
+     * If a value is present, invoke the specified consumer with the value,
+     * otherwise do nothing.
+     *
+     * @param consumer block to be executed if a value is present
+     * @return this object
+     * @throws NullPointerException if value is present and {@code consumer} is
+     * null
+     */
+    public default void ifPresent(Consumer<? super T> consumer) {
+        if (isPresent()) {
+            consumer.accept(rawValue());
+        }
+    }
+
+    /**
+     * If a value is present, performs the given action with the value,
+     * otherwise performs the given empty-based action.
+     *
+     * @param action the action to be performed, if a value is present
+     * @param emptyAction the empty-based action to be performed, if no value is
+     * present
+     * @throws NullPointerException if a value is present and the given action
+     * is {@code null}, or no value is present and the given empty-based action
+     * is {@code null}.
+     */
+    public default void ifPresentOrElse(Consumer<? super T> action, Runnable emptyAction) {
+        if (isPresent()) {
+            action.accept(rawValue());
+        } else {
+            emptyAction.run();
+        }
+    }
+
+    /**
+     * If a value is present, performs the given action with the value,
+     * otherwise performs the same action with the given default value. Whether
+     * exception has occurred is irrelevant.
+     *
+     * @param def default value
+     * @param action the action to be performed
+     * @throws NullPointerException if a value is present and the given action
+     * is {@code null}. It is up to the caller to ensure that a passed default
+     * value is not null.
+     */
+    public default void ifPresentOrDefault(T def, Consumer<? super T> action) {
         action.accept(isPresent() ? rawValue() : def);
-        return this;
     }
 
     /**
@@ -810,6 +959,7 @@ public interface SafeOpt<T> {
      * Shorthand for {@link SafeOpt#throwIfErrorAsNested() } and
      * {@code orElse(Object)}
      *
+     * @param val
      * @return
      */
     public default T throwNestedOr(T val) {

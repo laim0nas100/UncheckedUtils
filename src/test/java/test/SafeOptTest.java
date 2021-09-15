@@ -1,11 +1,9 @@
 package test;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.Set;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
@@ -74,6 +72,10 @@ public class SafeOptTest {
         assertThat(map.flatMapOpt(m -> SafeOpt.ofNullable(m).asOptional()).get()).isEqualTo(expected);
         assertThat(map.flatMap(m -> SafeOpt.error(new PassableException("Some error"))).getError().select(PassableException.class).isPresent()).isTrue();
 
+    }
+
+    @Test
+    public void testLazy() {
         List<String> states1 = new ArrayList<>();
         List<String> states2 = new ArrayList<>();
         SafeOpt<Integer> lazy = SafeOpt.ofLazy("10")
@@ -93,11 +95,14 @@ public class SafeOptTest {
                 .flatMapOpt(m -> {
                     states1.add("flatMapOpt");
                     return Optional.of(m);
+                })
+                .peek(m -> {
+                    states1.add("peek");
                 });
 
         assertThat(states1).isEmpty();
         lazy.orNull();
-        assertThat(states1).containsExactly("filter", "map", "flatMap", "flatMapOpt");
+        assertThat(states1).containsExactly("filter", "map", "flatMap", "flatMapOpt", "peek");
         lazy
                 .filter(f -> {
                     states2.add("filter");
@@ -114,10 +119,13 @@ public class SafeOptTest {
                 .flatMapOpt(m -> {
                     states2.add("flatMapOpt");
                     return Optional.of(m);
+                })
+                .peek(m -> {
+                    states2.add("peek");
                 });
         assertThat(states2).containsExactlyElementsOf(states1);
         lazy.orNull();
-        assertThat(states2).containsExactlyElementsOf(states1); //ensure  no double insterts
+        assertThat(states2).containsExactlyElementsOf(states1); //ensure no double inserts
         List<String> stateError = new ArrayList<>();
         SafeOpt<Integer> peekError = SafeOpt.ofLazy("NaN").map(Integer::parseInt)
                 .filter(f -> {

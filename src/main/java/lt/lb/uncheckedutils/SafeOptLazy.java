@@ -15,7 +15,9 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import lt.lb.uncheckedutils.func.UncheckedBiFunction;
+import lt.lb.uncheckedutils.func.UncheckedConsumer;
 import lt.lb.uncheckedutils.func.UncheckedFunction;
+import lt.lb.uncheckedutils.func.UncheckedRunnable;
 
 /**
  *
@@ -306,22 +308,74 @@ public class SafeOptLazy<S, T> extends SafeOptBase<T> {
     }
 
     @Override
-    public SafeOpt<T> ifPresentOrDefault(T def, Consumer<? super T> action) {
+    public SafeOpt<T> peek(UncheckedConsumer<? super T> action) {
         Objects.requireNonNull(action);
-        return collapse().ifPresentOrDefault(def, action);
+        return functor(init -> init.peek(action));
     }
 
     @Override
-    public SafeOpt<T> ifPresentOrElse(Consumer<? super T> action, Runnable emptyAction) {
+    public SafeOpt<T> peek(Consumer<? super T> action) {
+        Objects.requireNonNull(action);
+        return functor(init -> init.peek(action));
+    }
+
+    @Override
+    public SafeOpt<T> peekOrElse(UncheckedConsumer<? super T> action, UncheckedRunnable emptyAction) {
         Objects.requireNonNull(action);
         Objects.requireNonNull(emptyAction);
-        return collapse().ifPresentOrElse(action, emptyAction);
+        return functor(init -> init.peekOrElse(action, emptyAction));
     }
 
     @Override
-    public SafeOpt<T> ifPresent(Consumer<? super T> consumer) {
+    public SafeOpt<T> peekOrElse(Consumer<? super T> action, UncheckedRunnable emptyAction) {
+        Objects.requireNonNull(action);
+        Objects.requireNonNull(emptyAction);
+        return functor(init -> init.peekOrElse(action, emptyAction));
+    }
+
+    @Override
+    public SafeOpt<T> peekOrElse(UncheckedConsumer<? super T> action, Runnable emptyAction) {
+        Objects.requireNonNull(action);
+        Objects.requireNonNull(emptyAction);
+        return functor(init -> init.peekOrElse(action, emptyAction));
+    }
+
+    @Override
+    public SafeOpt<T> peekOrElse(Consumer<? super T> action, Runnable emptyAction) {
+        Objects.requireNonNull(action);
+        Objects.requireNonNull(emptyAction);
+        return functor(init -> init.peekOrElse(action, emptyAction));
+    }
+
+    @Override
+    public SafeOpt<T> peekOrDefault(T def, UncheckedConsumer<? super T> action) {
+        Objects.requireNonNull(action);
+        return functor(init -> init.peekOrDefault(def, action));
+    }
+
+    @Override
+    public SafeOpt<T> peekOrDefault(T def, Consumer<? super T> action) {
+        Objects.requireNonNull(action);
+        return functor(init -> init.peekOrDefault(def, action));
+    }
+
+    @Override
+    public void ifPresent(Consumer<? super T> consumer) {
         Objects.requireNonNull(consumer);
-        return collapse().ifPresent(consumer);
+        collapse().ifPresent(consumer);
+    }
+
+    @Override
+    public void ifPresentOrElse(Consumer<? super T> action, Runnable emptyAction) {
+        Objects.requireNonNull(action);
+        Objects.requireNonNull(emptyAction);
+        collapse().ifPresentOrElse(action, emptyAction);
+    }
+
+    @Override
+    public void ifPresentOrDefault(T def, Consumer<? super T> action) {
+        Objects.requireNonNull(action);
+        collapse().ifPresentOrDefault(def, action);
     }
 
     @Override
