@@ -25,7 +25,7 @@ public class PassableException extends RuntimeException {
     protected final Object data;
 
     public PassableException(Class<? extends Throwable> cls, String message, Object data) {
-        super(message);
+        super(message, null, false, false);
         exceptionType = Objects.requireNonNull(cls, "Exception type must not be null");
         this.data = data;
     }
@@ -58,14 +58,15 @@ public class PassableException extends RuntimeException {
      */
     public static String defaultMessage(Class<? extends Throwable> cls) {
         Objects.requireNonNull(cls, "Exception type must not be null");
-        return "Explicit error of type " + cls.getName();
+        return "Explicit error of type " + cls.getSimpleName();
     }
-    
+
     /**
      * The default exception type is {@link RuntimeException}
-     * @return 
+     *
+     * @return
      */
-    public static Class<? extends Throwable> defaultExceptionType(){
+    public static Class<? extends Throwable> defaultExceptionType() {
         return RuntimeException.class;
     }
 
@@ -90,7 +91,8 @@ public class PassableException extends RuntimeException {
 
     /**
      * Get {@link Throwable} type passed to this {@link PassableException}.
-     * @return 
+     *
+     * @return
      */
     public Class<? extends Throwable> getType() {
         return exceptionType;

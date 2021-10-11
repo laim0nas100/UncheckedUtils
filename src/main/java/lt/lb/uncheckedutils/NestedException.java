@@ -75,7 +75,7 @@ public class NestedException extends RuntimeException {
     }
 
     protected NestedException(Throwable e) {
-        super("Nested exception, to get real exception, call getCause");
+        super("Nested exception, to get real exception, call getCause", e, false, false);
         error = e;
     }
 
