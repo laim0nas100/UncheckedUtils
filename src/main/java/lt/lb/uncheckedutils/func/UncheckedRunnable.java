@@ -1,5 +1,6 @@
 package lt.lb.uncheckedutils.func;
 
+import java.util.Objects;
 import java.util.concurrent.Callable;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.SafeOpt;
@@ -12,10 +13,12 @@ import lt.lb.uncheckedutils.SafeOpt;
 public interface UncheckedRunnable extends Runnable {
 
     public static UncheckedRunnable from(Callable call) {
+        Objects.requireNonNull(call, "Callable is null");
         return () -> call.call();
     }
 
     public static UncheckedRunnable from(Runnable run) {
+        Objects.requireNonNull(run, "Runnable is null");
         return () -> run.run();
     }
 
@@ -50,7 +53,13 @@ public interface UncheckedRunnable extends Runnable {
     public void runUnchecked() throws Throwable;
 
     public static <T> Callable<T> toCallable(UncheckedRunnable run, final T val) {
-        return (UncheckedSupplier<T>) () -> val;
+        Objects.requireNonNull(run, "UncheckedRunnable is null");
+        return (UncheckedSupplier<T>) () -> {
+            {
+                run.runUnchecked();
+                return val;
+            }
+        };
     }
 
     public static <T> Callable<T> toCallable(UncheckedRunnable run) {
