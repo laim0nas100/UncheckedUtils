@@ -55,10 +55,8 @@ public interface UncheckedRunnable extends Runnable {
     public static <T> Callable<T> toCallable(UncheckedRunnable run, final T val) {
         Objects.requireNonNull(run, "UncheckedRunnable is null");
         return (UncheckedSupplier<T>) () -> {
-            {
-                run.runUnchecked();
-                return val;
-            }
+            run.runUnchecked();
+            return val;
         };
     }
 
