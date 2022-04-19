@@ -5,6 +5,7 @@ import java.util.Objects;
 /**
  *
  * @author laim0nas100
+ * @param <T>
  */
 public abstract class SafeOptBase<T> implements SafeOpt<T> {
 
@@ -30,7 +31,7 @@ public abstract class SafeOptBase<T> implements SafeOpt<T> {
                 return false;
             }
             return Objects.equals(this.rawException(), other.rawException());
-        }else{
+        } else {
             return false;
         }
 

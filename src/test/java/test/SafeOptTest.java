@@ -4,9 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
+import lt.lb.uncheckedutils.SafeOpt;
 import org.assertj.core.api.Assertions;
 import static org.assertj.core.api.Assertions.assertThat;
 import org.assertj.core.api.ThrowableTypeAssert;
@@ -139,5 +139,85 @@ public class SafeOptTest {
         assertThat(stateError).isEmpty();
         peekError.orNull();// collapse
         assertThat(stateError).containsExactly("error");
+    }
+    
+    
+    @Test
+    public void testAsync() {
+        List<String> states1 = new ArrayList<>();
+        List<String> states2 = new ArrayList<>();
+        SafeOpt<Integer> lazy = SafeOpt.ofAsync("10")
+                .map(Integer::parseInt)
+                .filter(f -> {
+                    
+                    states1.add("filter");
+                    return true;
+                })
+                .map(m -> {
+                    states1.add("map");
+                    return m;
+                })
+                .flatMap(m -> {
+                    states1.add("flatMap");
+                    return SafeOpt.of(m);
+                })
+                .flatMapOpt(m -> {
+                    states1.add("flatMapOpt");
+                    return Optional.of(m);
+                })
+                .peek(m -> {
+                    states1.add("peek");
+                });
+
+        lazy.orNull();
+        assertThat(states1).containsExactly("filter", "map", "flatMap", "flatMapOpt", "peek");
+        lazy
+                .filter(f -> {
+                    states2.add("filter");
+                    return true;
+                })
+                .map(m -> {
+                    states2.add("map");
+                    return m;
+                })
+                .flatMap(m -> {
+                    states2.add("flatMap");
+                    return SafeOpt.of(m);
+                })
+                .flatMapOpt(m -> {
+                    states2.add("flatMapOpt");
+                    return Optional.of(m);
+                })
+                .peek(m -> {
+                    states2.add("peek");
+                });
+        assertThat(states2).containsExactlyElementsOf(states1);
+        lazy.orNull();
+        assertThat(states2).containsExactlyElementsOf(states1); //ensure no double inserts
+        List<String> stateError = new ArrayList<>();
+        SafeOpt<Integer> peekError = SafeOpt.ofAsync("NaN").map(Integer::parseInt)
+                .filter(f -> {
+                    stateError.add("filter");
+                    return true;
+                })
+                .peekError(error -> {
+                    stateError.add("error");
+                });
+        
+        peekError.getError().map(err->{
+            System.out.println("Using error 1");
+            return err;
+        })
+                .map(err->{
+            System.out.println("Using error 2");
+            return err;
+        }).orNull();
+
+        peekError.orNull();// collapse
+        assertThat(stateError).containsExactly("error");
+    }
+    
+    public static void main(String[] args) {
+        new SafeOptTest().testAsync();
     }
 }

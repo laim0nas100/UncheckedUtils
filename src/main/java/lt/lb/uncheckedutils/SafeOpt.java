@@ -3,6 +3,9 @@ package lt.lb.uncheckedutils;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -10,6 +13,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+import lt.lb.uncheckedutils.concurrent.CompletedFuture;
+import lt.lb.uncheckedutils.concurrent.Submitter;
 import lt.lb.uncheckedutils.func.UncheckedBiFunction;
 import lt.lb.uncheckedutils.func.UncheckedConsumer;
 import lt.lb.uncheckedutils.func.UncheckedFunction;
@@ -33,7 +38,7 @@ import lt.lb.uncheckedutils.func.UncheckedSupplier;
 public interface SafeOpt<T> {
 
     /**
-     * Returns an {@code SafeOpt} with the specified present non-null value.
+     * Returns {@code SafeOpt} with the specified present non-null value.
      *
      * @param <T> the class of the value
      * @param val the value to be present, which must be non-null
@@ -46,7 +51,7 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Returns an {@code SafeOpt} with the specified present non-null value.
+     * Returns {@code SafeOpt} with the specified present non-null value.
      *
      * @param <T> the class of the value
      * @param sup the value supplier to be present
@@ -66,7 +71,7 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Returns an {@code SafeOpt} with the specified present non-null value.
+     * Returns {@code SafeOpt} with the specified present non-null value.
      *
      * @param <T> the class of the value
      * @param sup the value supplier to be present
@@ -91,7 +96,7 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Returns an {@code SafeOpt} with the specified present non-null value.
+     * Returns {@code SafeOpt} with the specified present non-null value.
      *
      * @param <T> the class of the value
      * @param sup the value supplier to be present
@@ -111,7 +116,7 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Returns an {@code SafeOpt} with the specified present non-null value.
+     * Returns {@code SafeOpt} with the specified present non-null value.
      *
      * @param <T> the class of the value
      * @param sup the value supplier to be present
@@ -136,7 +141,7 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Returns an empty {@code SafeOpt} instance.
+     * Returns empty {@code SafeOpt} instance.
      *
      * @param <T> Type of the non-existent value
      * @return an empty {@code SafeOpt}
@@ -146,7 +151,7 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Returns an empty {@code SafeOpt} instance with given error. Error must be
+     * Returns empty {@code SafeOpt} instance with given error. Error must be
      * provided.
      *
      * @param <T> Type of the non-existent value
@@ -158,7 +163,7 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Returns an {@code SafeOpt} describing the specified value, if non-null,
+     * Returns {@code SafeOpt} describing the specified value, if non-null,
      * otherwise returns an empty {@code SafeOpt}.
      *
      * @param <T> the class of the value
@@ -171,21 +176,21 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Returns an {@code SafeOpt} based on the specified future. Every possible
-     * operation is lazily evaluated and the result is only collapsed when
-     * needed.
+     * Returns lazy {@code SafeOpt} based on the specified future. Every
+     * possible operation is lazily evaluated and the result is only collapsed
+     * when needed.
      *
      * @param <T>
      * @param future
      * @return
      */
-    public static <T> SafeOpt<T> ofFuture(Future<T> future) {
+    public static <T> SafeOptCollapse<T> ofFuture(Future<T> future) {
         Objects.requireNonNull(future);
         return new SafeOptLazy<>(SafeOpt.of(future), f -> f.map(Future::get));
     }
 
     /**
-     * Returns an {@code SafeOpt} based on the specified value. Every possible
+     * Returns lazy {@code SafeOpt} based on the specified value. Every possible
      * operation is lazily evaluated and the result is only collapsed when
      * needed.
      *
@@ -193,17 +198,58 @@ public interface SafeOpt<T> {
      * @param val
      * @return
      */
-    public static <T> SafeOpt<T> ofLazy(T val) {
+    public static <T> SafeOptCollapse<T> ofLazy(T val) {
         Objects.requireNonNull(val);
         return new SafeOptLazy<>(val, Function.identity());
     }
 
     /**
-     * Returns an {@code Optional} of current {@code SafeOpt}. This operation
+     * Returns {@code SafeOpt} based on the specified value.Every possible
+     * operation is evaluated in given executor, similarly to
+     * {@link CompletableFuture}.
+     *
+     * @param <T>
+     * @param submitter
+     * @param val
+     * @return
+     */
+    public static <T> SafeOptCollapse<T> ofAsync(Submitter submitter, T val) {
+        return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.of(val)));
+    }
+
+    /**
+     * Returns async {@code SafeOpt} based on the specified value.Every possible
+     * operation is evaluated in given executor, similarly to
+     * {@link CompletableFuture}.
+     *
+     * @param <T>
+     * @param submitter
+     * @param val
+     * @return
+     */
+    public static <T> SafeOptCollapse<T> ofAsync(ExecutorService submitter, T val) {
+        return new SafeOptAsync<>(Submitter.ofExecutorService(submitter), new CompletedFuture<>(SafeOpt.of(val)));
+    }
+
+    /**
+     * Returns async {@code SafeOpt} based on the specified value.Every possible
+     * operation is evaluated in default {@link ForkJoinPool#commonPool()}
+     * executor, similarly to {@link CompletableFuture}.
+     *
+     * @param <T>
+     * @param val
+     * @return
+     */
+    public static <T> SafeOptCollapse<T> ofAsync(T val) {
+        return new SafeOptAsync<>(Submitter.DEFAULT_POOL, new CompletedFuture<>(SafeOpt.of(val)));
+    }
+
+    /**
+     * Returns {@code Optional} of current {@code SafeOpt}. This operation
      * prompts re-throwing previously caught exception (if one exists).
      *
-     * @return an {@code Optional} with a present value if the specified value
-     * is non-null, otherwise an empty {@code Optional}
+     * @return {@code Optional} with a present value if the specified value is
+     * non-null, otherwise an empty {@code Optional}
      */
     public default Optional<T> asOptional() throws NestedException {
         return throwIfErrorAsNested().ignoringExceptionOptional();
@@ -219,19 +265,52 @@ public interface SafeOpt<T> {
     public default Optional<T> ignoringExceptionOptional() {
         return Optional.ofNullable(rawValue());
     }
-    
+
+    /**
+     * Create {@code SafeOpt} based on current implementation. Should not supply
+     * both value and exception.
+     *
+     * @param <A>
+     * @param rawValue
+     * @param rawException
+     * @return
+     */
     public <A> SafeOpt<A> produceNew(A rawValue, Throwable rawException);
-    
+
+    /**
+     * Create {@code SafeOpt} based on current implementation containing only
+     * the error. This method unwraps {@link NestedException}.
+     *
+     * @param <A>
+     * @param rawException
+     * @return
+     */
     public default <A> SafeOpt<A> produceError(Throwable rawException) {
         return rawException == null ? produceNew(null, null) : produceNew(null, NestedException.unwrap(rawException));
     }
-    
+
+    /**
+     * Create empty {@code SafeOpt} based on current implementation.
+     *
+     * @param <A>
+     * @return
+     */
     public default <A> SafeOpt<A> produceEmpty() {
         return produceNew(null, null);
     }
-    
+
+    /**
+     * Resolve the value stored in this {@code SafeOpt}.
+     *
+     * @return
+     */
     public T rawValue();
-    
+
+    /**
+     * Resolve the exception stored in this {@code SafeOpt}.
+     *
+     * @return
+     */
     public Throwable rawException();
 
     /**
@@ -592,7 +671,7 @@ public interface SafeOpt<T> {
                     return produceEmpty();
                 }
                 return produceNew(opt.rawValue(), opt.rawException());
-                
+
             } catch (Throwable t) {
                 return produceError(t);
             }
@@ -627,7 +706,7 @@ public interface SafeOpt<T> {
                 } else {
                     return produceNew(apply.get(), null);
                 }
-                
+
             } catch (Throwable t) {
                 return produceError(t);
             }
@@ -753,7 +832,7 @@ public interface SafeOpt<T> {
     public default <U, P> SafeOpt<U> mapCombine(SafeOpt<? extends P> with, BiFunction<? super T, ? super P, ? extends U> mapper) {
         Objects.requireNonNull(with, "Null with object");
         Objects.requireNonNull(mapper, "Null map function");
-        
+
         if (!isPresent()) {
             return produceError(rawException());
         } else if (!with.isPresent()) {
@@ -993,5 +1072,5 @@ public interface SafeOpt<T> {
     public default SafeOpt<Throwable> getError() {
         return produceNew(rawException(), null);
     }
-    
+
 }
