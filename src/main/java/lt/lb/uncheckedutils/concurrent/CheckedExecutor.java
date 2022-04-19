@@ -1,8 +1,10 @@
-package lt.lb.uncheckedutils;
+package lt.lb.uncheckedutils.concurrent;
 
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
+import lt.lb.uncheckedutils.Checked;
+import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.func.UncheckedRunnable;
 import lt.lb.uncheckedutils.func.UncheckedSupplier;
 
