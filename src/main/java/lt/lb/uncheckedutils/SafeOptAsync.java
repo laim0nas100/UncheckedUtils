@@ -20,13 +20,13 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         try {
             return base.get();
         } catch (InterruptedException ex) {
-            throw new NestedException(ex);
+            throw NestedException.of(ex);
         } catch (ExecutionException ex) { // should not happen, since SafeOpt captures exceptions
             Throwable cause = ex.getCause();
             if (cause != null) {
-                throw new NestedException(cause);
+                throw NestedException.of(cause);
             } else {
-                throw new NestedException(ex);
+                throw NestedException.of(ex);
             }
         }
     }
@@ -35,9 +35,6 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
     public <O> SafeOpt<O> functor(Function<SafeOpt<T>, SafeOpt<O>> func) {
         Objects.requireNonNull(func, "Functor is null");
         Future<SafeOpt<O>> submit = isAsync ? submitter.submit(() -> func.apply(collapse())) : new CompletedFuture<>(func.apply(collapse()));
-        if (!isAsync) {
-            System.out.println("NOT ASYNC");
-        }
         return new SafeOptAsync<>(submitter, submit, isAsync);
     }
 

@@ -134,9 +134,11 @@ public class NestedException extends RuntimeException {
 
     public Throwable unwrapReal() {
         Throwable t = this;
+        int check = 1_000_000;
         do {
+            check--; // prevent cycle, if it happens somehow
             t = t.getCause();
-        } while (t instanceof NestedException);
+        } while (t instanceof NestedException && check > 0);
         return t;
     }
 

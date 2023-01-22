@@ -101,7 +101,9 @@ public class SafeOptTest {
                 });
 
         assertThat(states1).isEmpty();
-        lazy.orNull();
+        Integer result = lazy.chain(m -> {
+            return m.orNull();
+        });
         assertThat(states1).containsExactly("filter", "map", "flatMap", "flatMapOpt", "peek");
         lazy
                 .filter(f -> {
@@ -140,8 +142,7 @@ public class SafeOptTest {
         peekError.orNull();// collapse
         assertThat(stateError).containsExactly("error");
     }
-    
-    
+
     @Test
     public void testAsync() {
         List<String> states1 = new ArrayList<>();
@@ -149,7 +150,7 @@ public class SafeOptTest {
         SafeOpt<Integer> lazy = SafeOpt.ofAsync("10")
                 .map(Integer::parseInt)
                 .filter(f -> {
-                    
+
                     states1.add("filter");
                     return true;
                 })
@@ -203,20 +204,20 @@ public class SafeOptTest {
                 .peekError(error -> {
                     stateError.add("error");
                 });
-        
-        peekError.getError().map(err->{
+
+        peekError.getError().map(err -> {
             System.out.println("Using error 1");
             return err;
         })
-                .map(err->{
-            System.out.println("Using error 2");
-            return err;
-        }).orNull();
+                .map(err -> {
+                    System.out.println("Using error 2");
+                    return err;
+                }).orNull();
 
         peekError.orNull();// collapse
         assertThat(stateError).containsExactly("error");
     }
-    
+
     public static void main(String[] args) {
         new SafeOptTest().testAsync();
     }

@@ -508,7 +508,6 @@ public interface SafeOpt<T> {
      * otherwise do nothing.
      *
      * @param consumer block to be executed if a value is present
-     * @return this object
      * @throws NullPointerException if value is present and {@code consumer} is
      * null
      */
@@ -988,7 +987,6 @@ public interface SafeOpt<T> {
     /**
      * Throw matching type of exception if present
      *
-     *
      * @param <Ex> Type of the exception to be thrown
      * @param type
      * @return this object
@@ -1071,6 +1069,21 @@ public interface SafeOpt<T> {
      */
     public default SafeOpt<Throwable> getError() {
         return produceNew(rawException(), null);
+    }
+
+    /**
+     * Chain this object to produce something else, flow is not changed,
+     * exceptions are not caught inside this method, regardless of current
+     * state.
+     *
+     *
+     *
+     * @param <U> result
+     * @param chainFunction chaining function
+     * @return
+     */
+    public default <U> U chain(Function<SafeOpt<T>, ? extends U> chainFunction) {
+        return Objects.requireNonNull(chainFunction, "Chain function is null").apply(this);
     }
 
 }
