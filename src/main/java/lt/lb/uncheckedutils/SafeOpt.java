@@ -942,6 +942,17 @@ public interface SafeOpt<T> {
     }
 
     /**
+     * Return the contained value, if present, otherwise throw a {@link NoSuchElementExcpetion} with given message;
+     *
+     * @param msg the error message
+     * @return the present value
+     * @throws NoSuchElementException with given message if there is no value present
+     */
+    public default T orElseThrow(String msg) {
+        return orElseThrow(() -> new NoSuchElementException(msg));
+    }
+
+    /**
      * Throw matching type of exception if present, or return contained value
      * (if no contained value, throws NoSuchElementException)
      *
@@ -1041,6 +1052,68 @@ public interface SafeOpt<T> {
      */
     public default T throwNestedOr(T val) {
         return throwIfErrorAsNested().orElse(val);
+    }
+
+    /**
+     * If a specific {@link RuntimeException} or {@link Error} has occurred,
+     * terminate by throwing such exception, otherwise throw exception wrapped
+     * in {@link NestedException}.
+     *
+     * @return returns an {@code SafeOpt} describing the value of this
+     * {@code SafeOpt}, if a value is present
+     * @throws RuntimeException, Error or NestedException depending on what kind
+     * of error was present
+     */
+    public default SafeOpt<T> throwAny() throws RuntimeException, Error, NestedException {
+        return throwIfError(RuntimeException.class)
+                .throwIfError(Error.class)
+                .throwIfErrorAsNested();
+    }
+
+    /**
+     * Shorthand for throwAny().orNull()
+     *
+     * @return
+     */
+    public default T throwAnyOrNull() {
+        return throwAny().orNull();
+    }
+
+    /**
+     * Shorthand for throwAny().get()
+     *
+     * @return
+     */
+    public default T throwAnyGet() {
+        return throwAny().get();
+    }
+
+    /**
+     * Shorthand for throwAny().orElse(Object)
+     *
+     * @return
+     */
+    public default T throwAnyOr(T val) {
+        return throwAny().orElse(val);
+    }
+
+    /**
+     * Shorthand for throwAny().orElseGet(Supplier)
+     *
+     * @return
+     */
+    public default T throwAnyOrGet(Supplier<? extends T> supply) {
+        return throwAny().orElseGet(supply);
+    }
+
+    /**
+     * Shorthand for throwAny().orElseThrow(String)
+     *
+     * @param msg
+     * @return
+     */
+    public default T throwAnyOrThrow(String msg) {
+        return throwAny().orElseThrow(msg);
     }
 
     /**
