@@ -214,7 +214,7 @@ public interface SafeOpt<T> {
      * @return
      */
     public static <T> SafeOptCollapse<T> ofAsync(Submitter submitter, T val) {
-        return new SafeOptAsyncOld<>(submitter, new CompletedFuture<>(SafeOpt.of(val)));
+        return SafeOptAsync.ofNullable(submitter, val);
     }
 
     /**

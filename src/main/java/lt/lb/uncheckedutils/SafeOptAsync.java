@@ -45,42 +45,64 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
     }
 
     public static class Chain extends AtomicArray<SingleCompletion> {
-        
+
+        public static final int FORK_AT = 10;
+
         public static AtomicInteger maxSize = new AtomicInteger();
 
         public final Future<SafeOpt> base;
 
-        public final AtomicReference<Thread> running = new AtomicReference<>();
+        public final AtomicBoolean running = new AtomicBoolean(false);
+        public final AtomicInteger runningSubmittions = new AtomicInteger(0);
+
+        public final int forkAt;
 
         public Chain(Future<SafeOpt> base) {
             super();
+            this.forkAt = FORK_AT;
             this.base = base;
+        }
+
+        public Chain(Future<SafeOpt> base, int forkAt) {
+            super();
+            this.base = base;
+            this.forkAt = forkAt;
         }
 
         @Override
         public void add(SingleCompletion value) {
-            super.add(value); 
-            
-            maxSize.accumulateAndGet(size(), (c,s)->{
+            super.add(value);
+
+            maxSize.accumulateAndGet(size(), (c, s) -> {
                 return Math.max(c, s);
             });
         }
-        
-        
+
+        public Chain startNew(int index) {
+            if (index > size()) {
+                throw new IllegalArgumentException("New chain index bigger than chain size:" + index + " " + getLastWriteIndex());
+            }
+            SingleCompletion newBase = read(index); // is new base
+            return new Chain(newBase.result);
+        }
 
     }
 
-    protected SafeOpt<T> resolve() {
+    protected SafeOpt<T> resolve(boolean onlyTryWork) {
         if (index < 0 || chain == null) {
+            if(onlyTryWork){
+                return null;
+            }
             return await(base);
         }
 
         for (int rep = 0; rep < 100; rep++) {
-            if (chain.getLastWriteIndex() >= index) { // this stage is completed
+            if (!onlyTryWork && chain.getLastWriteIndex() >= index) { // this stage is completed
+                
                 return awaitCast(chain.read(index).result);
             }
 
-            if (chain.running.compareAndSet(null, Thread.currentThread())) {
+            if (chain.running.compareAndSet(false, true)) {
                 try {
                     while (true) {
                         int lastWrite = chain.getLastWriteIndex();
@@ -110,10 +132,13 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                     }
 
                 } finally {
-                    chain.running.set(null);
+                    chain.running.set(false);
                 }
 
             }
+        }
+        if(onlyTryWork){
+            return null;
         }
 
         return awaitCast(chain.read(index).result);
@@ -141,7 +166,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
     @Override
     public SafeOpt<T> collapse() {
-        return resolve();
+        return resolve(false);
     }
 
     @Override
@@ -150,16 +175,41 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         if (!isAsync) {
             return func.apply(collapse());
         } else {
-            SingleCompletion completion = new SingleCompletion(index + 1, (Function) func);
-            chain.add(completion);
-
-            SafeOptAsync<O> produce = produce(completion);
-//            if (chain.running.get() == null) {
+            if (chain.forkAt > 0 && chain.forkAt <= index + 1) {
+                int newIndex = 0;
+                SingleCompletion completion = new SingleCompletion(newIndex, (Function) func);
+                Chain newChain = chain.startNew(index);
+                newChain.add(completion);
+                SafeOptAsync safeOpt = new SafeOptAsync<>(submitter, (Future) completion.result, newIndex, true, newChain);
+                SafeOptAsync me = this;
+                me.resolve(true);
                 submitter.submit(() -> {
-                    return produce.resolve();
+                    
+                    safeOpt.resolve(true);
+                    return null;
                 });
-//            }
-            return produce;
+                return safeOpt;
+
+            } else {// no fork
+                SingleCompletion completion = new SingleCompletion(index + 1, (Function) func);
+                chain.add(completion);
+
+                SafeOptAsync<O> produce = produce(completion);
+                if (chain.runningSubmittions.incrementAndGet() >= 3) {
+                    chain.runningSubmittions.decrementAndGet();
+
+                } else {
+                    submitter.submit(() -> {
+                        try {
+                            return produce.resolve(true);
+                        } finally {
+                            chain.runningSubmittions.decrementAndGet();
+                        }
+
+                    });
+                }
+                return produce;
+            }
 
         }
     }
@@ -195,13 +245,12 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
     protected <A> SafeOptAsync<A> produce(SingleCompletion completion) {
         return new SafeOptAsync<>(submitter, (Future) completion.result, index + 1, true, chain);
-
     }
 
     @Override
     public <A> SafeOpt<A> produceNew(A rawValue, Throwable rawException) {
         if (rawValue == null && rawException == null) {
-            return new SafeOptAsync<>(submitter, (Future) EMPTY_COMPLETED_FUTURE, -1, false, null);
+            return SafeOpt.empty();
         }
         if (rawValue != null && rawException != null) {
             throw new IllegalArgumentException("rawValue AND rawException should not be present");

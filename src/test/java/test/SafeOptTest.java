@@ -6,12 +6,16 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
+import lt.lb.uncheckedutils.SafeOptAsync;
 import org.assertj.core.api.Assertions;
 import static org.assertj.core.api.Assertions.assertThat;
 import org.assertj.core.api.ThrowableTypeAssert;
@@ -150,8 +154,8 @@ public class SafeOptTest {
 
     @Test
     public void testAsync() {
-        List<String> states1 = new ArrayList<>();
-        List<String> states2 = new ArrayList<>();
+        Collection<String> states1 = new LinkedBlockingDeque<>();
+        Collection<String> states2 = new LinkedBlockingDeque<>();
         SafeOpt<Integer> lazy = SafeOpt.ofAsync("10")
                 .map(Integer::parseInt)
                 .filter(f -> {
@@ -197,9 +201,9 @@ public class SafeOptTest {
                 .peek(m -> {
                     states2.add("peek");
                 });
-        assertThat(states2).containsExactlyElementsOf(states1);
+        assertThat(states2).containsSequence(states1);
         lazy.orNull();
-        assertThat(states2).containsExactlyElementsOf(states1); //ensure no double inserts
+        assertThat(states2).containsSequence(states1); //ensure no double inserts
         List<String> stateError = new ArrayList<>();
         SafeOpt<Integer> peekError = SafeOpt.ofAsync("NaN").map(Integer::parseInt)
                 .filter(f -> {
@@ -221,11 +225,12 @@ public class SafeOptTest {
 
         peekError.orNull();// collapse
         assertThat(stateError).containsExactly("error");
+
     }
 
     public void testAsyncReal(ExecutorService service, boolean inside) {
-        Collection<String> states1 = new ConcurrentLinkedDeque<>();
-        Collection<String> states2 = new ConcurrentLinkedDeque<>();
+        Collection<String> states1 = new LinkedBlockingDeque<>();
+        Collection<String> states2 = new LinkedBlockingDeque<>();
         SafeOpt<Integer> lazy = SafeOpt.ofAsync(service, "10")
                 .map(Integer::parseInt)
                 .filter(f -> {
@@ -248,7 +253,7 @@ public class SafeOptTest {
                 .peek(m -> {
                     states1.add("peek");
                 });
-
+        lazy.orNull();
         SafeOpt<Integer> peek = lazy
                 .filter(f -> {
                     states2.add("filter");
@@ -270,47 +275,86 @@ public class SafeOptTest {
                     states2.add("peek");
                 });
 
-        Collection<String> stateError = new ConcurrentLinkedDeque<>();
+        Collection<String> stateError = new LinkedBlockingDeque<>();
         SafeOpt<Integer> peekError = SafeOpt.ofAsync(service, "NaN").map(Integer::parseInt)
                 .filter(f -> {
-                    stateError.add("filter"); // must nnot include
+                    stateError.add("filter"); // must not include
                     return true;
                 })
                 .peekError(error -> {
                     stateError.add("error");
                 });
-
-        peekError.getError().map(err -> {
+        peekError.orNull();// collapse
+        SafeOpt<Throwable> error = peekError.getError();
+        SafeOpt<Throwable> map1 = error.map(err -> {
             stateError.add("Using error 1");
             return err;
-        })
-                .map(err -> {
-                    System.out.println("In error "+inside);
-                    stateError.add("Using error 2");
-                    return err;
-                }).orNull();
+        });
 
-        lazy.orNull();
+        SafeOpt<Throwable> map2 = map1.map(err -> {
+            stateError.add("Using error 2");
+            return err;
+        });
+        Throwable orNull = map2.orNull();
+
+        assertThat(orNull).isNotNull();
+
         peek.orNull();
         assertThat(states1).containsExactly("filter", "map", "flatMap", "flatMapOpt", "peek");
+        assertThat(states1).containsSequence(states2);
 
-        peekError.orNull();// collapse
         assertThat(stateError).containsExactly("error", "Using error 1", "Using error 2");
 
     }
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(16);
-
-        for (int i = 0; i < 100; i++) {
-            if (i % 10 != 0) {
-                pool.submit(() -> {
+        ExecutorService other = Executors.newFixedThreadPool(5);
+        List<Future> futures = new ArrayList<>();
+        for (int i = 0; i < 10000; i++) {
+            if (i % 10 > 5) {
+                Future e = pool.submit(() -> {
                     new SafeOptTest().testAsyncReal(pool, true);
                 });
-            }else{
-                new SafeOptTest().testAsyncReal(pool,false);
+                futures.add(e);
+            } else {
+                Future<?> submit = other.submit(() -> {
+                    new SafeOptTest().testAsyncReal(pool, false);
+                });
+                futures.add(submit);
+
             }
 
+        }
+        for (Future f : futures) {
+            f.get();
+        }
+        pool.shutdown();
+        pool.awaitTermination(1, TimeUnit.DAYS);
+        other.shutdown();
+        other.awaitTermination(1, TimeUnit.DAYS);
+        System.out.println("Max chain size:" + SafeOptAsync.Chain.maxSize.get());
+
+    }
+
+//    @Test
+    public void testAsyncReal() throws InterruptedException, ExecutionException {
+        ExecutorService pool = Executors.newFixedThreadPool(16);
+
+        ArrayList<Future> futures = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            if (i % 10 < 1) {
+                Future<?> submit = pool.submit(() -> {
+                    new SafeOptTest().testAsyncReal(pool, true);
+                });
+                futures.add(submit);
+            } else {
+                new SafeOptTest().testAsyncReal(pool, false);
+            }
+
+        }
+        for (Future f : futures) {
+            f.get();
         }
         pool.shutdown();
         pool.awaitTermination(1, TimeUnit.DAYS);
