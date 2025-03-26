@@ -1,9 +1,14 @@
 package test;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
@@ -218,7 +223,97 @@ public class SafeOptTest {
         assertThat(stateError).containsExactly("error");
     }
 
-    public static void main(String[] args) {
-        new SafeOptTest().testAsync();
+    public void testAsyncReal(ExecutorService service, boolean inside) {
+        Collection<String> states1 = new ConcurrentLinkedDeque<>();
+        Collection<String> states2 = new ConcurrentLinkedDeque<>();
+        SafeOpt<Integer> lazy = SafeOpt.ofAsync(service, "10")
+                .map(Integer::parseInt)
+                .filter(f -> {
+
+                    states1.add("filter");
+                    return true;
+                })
+                .map(m -> {
+                    states1.add("map");
+                    return m;
+                })
+                .flatMap(m -> {
+                    states1.add("flatMap");
+                    return SafeOpt.of(m);
+                })
+                .flatMapOpt(m -> {
+                    states1.add("flatMapOpt");
+                    return Optional.of(m);
+                })
+                .peek(m -> {
+                    states1.add("peek");
+                });
+
+        SafeOpt<Integer> peek = lazy
+                .filter(f -> {
+                    states2.add("filter");
+                    return true;
+                })
+                .map(m -> {
+                    states2.add("map");
+                    return m;
+                })
+                .flatMap(m -> {
+                    states2.add("flatMap");
+                    return SafeOpt.of(m);
+                })
+                .flatMapOpt(m -> {
+                    states2.add("flatMapOpt");
+                    return Optional.of(m);
+                })
+                .peek(m -> {
+                    states2.add("peek");
+                });
+
+        Collection<String> stateError = new ConcurrentLinkedDeque<>();
+        SafeOpt<Integer> peekError = SafeOpt.ofAsync(service, "NaN").map(Integer::parseInt)
+                .filter(f -> {
+                    stateError.add("filter"); // must nnot include
+                    return true;
+                })
+                .peekError(error -> {
+                    stateError.add("error");
+                });
+
+        peekError.getError().map(err -> {
+            stateError.add("Using error 1");
+            return err;
+        })
+                .map(err -> {
+                    System.out.println("In error "+inside);
+                    stateError.add("Using error 2");
+                    return err;
+                }).orNull();
+
+        lazy.orNull();
+        peek.orNull();
+        assertThat(states1).containsExactly("filter", "map", "flatMap", "flatMapOpt", "peek");
+
+        peekError.orNull();// collapse
+        assertThat(stateError).containsExactly("error", "Using error 1", "Using error 2");
+
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        ExecutorService pool = Executors.newFixedThreadPool(16);
+
+        for (int i = 0; i < 100; i++) {
+            if (i % 10 != 0) {
+                pool.submit(() -> {
+                    new SafeOptTest().testAsyncReal(pool, true);
+                });
+            }else{
+                new SafeOptTest().testAsyncReal(pool,false);
+            }
+
+        }
+        pool.shutdown();
+        pool.awaitTermination(1, TimeUnit.DAYS);
+
     }
 }

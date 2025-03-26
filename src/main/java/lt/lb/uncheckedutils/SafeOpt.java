@@ -214,7 +214,7 @@ public interface SafeOpt<T> {
      * @return
      */
     public static <T> SafeOptCollapse<T> ofAsync(Submitter submitter, T val) {
-        return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.of(val)));
+        return new SafeOptAsyncOld<>(submitter, new CompletedFuture<>(SafeOpt.of(val)));
     }
 
     /**
@@ -223,12 +223,12 @@ public interface SafeOpt<T> {
      * {@link CompletableFuture}.
      *
      * @param <T>
-     * @param submitter
+     * @param service
      * @param val
      * @return
      */
-    public static <T> SafeOptCollapse<T> ofAsync(ExecutorService submitter, T val) {
-        return new SafeOptAsync<>(Submitter.ofExecutorService(submitter), new CompletedFuture<>(SafeOpt.of(val)));
+    public static <T> SafeOptCollapse<T> ofAsync(ExecutorService service, T val) {
+        return SafeOptAsync.ofNullable(service, val);
     }
 
     /**
@@ -241,7 +241,7 @@ public interface SafeOpt<T> {
      * @return
      */
     public static <T> SafeOptCollapse<T> ofAsync(T val) {
-        return new SafeOptAsync<>(Submitter.DEFAULT_POOL, new CompletedFuture<>(SafeOpt.of(val)));
+        return SafeOptAsync.ofNullable(val);
     }
 
     /**
@@ -942,11 +942,13 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Return the contained value, if present, otherwise throw a {@link NoSuchElementExcpetion} with given message;
+     * Return the contained value, if present, otherwise throw a
+     * {@link NoSuchElementExcpetion} with given message;
      *
      * @param msg the error message
      * @return the present value
-     * @throws NoSuchElementException with given message if there is no value present
+     * @throws NoSuchElementException with given message if there is no value
+     * present
      */
     public default T orElseThrow(String msg) {
         return orElseThrow(() -> new NoSuchElementException(msg));

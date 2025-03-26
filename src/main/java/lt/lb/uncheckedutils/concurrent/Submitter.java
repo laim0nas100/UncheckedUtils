@@ -15,9 +15,31 @@ public interface Submitter {
 
     <T> Future<T> submit(UncheckedSupplier<T> task);
 
-    public static Submitter ofExecutorService(ExecutorService service) {
+    public static Submitter ofExecutorService(final ExecutorService service) {
         Objects.requireNonNull(service);
-        return service::submit;
+        return new Submitter() {
+            ThreadLocal<Boolean> inside = ThreadLocal.withInitial(() -> false);
+
+            @Override
+            public <T> Future<T> submit(final UncheckedSupplier<T> task) {
+                if (inside.get()) {
+                    //just run
+                    FutureTask<T> futureTask = new FutureTask<>(task);
+                    futureTask.run();
+                    return futureTask;
+                } else {
+                    return service.submit(() -> {
+                        try {
+                            inside.set(true);
+                            return task.call();
+                        } finally {
+                            inside.set(false);
+                        }
+
+                    });
+                }
+            }
+        };
     }
 
     public static final Submitter DEFAULT_POOL = Submitter.ofExecutorService(ForkJoinPool.commonPool());
