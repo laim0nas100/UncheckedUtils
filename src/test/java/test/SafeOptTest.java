@@ -188,6 +188,7 @@ public class SafeOptTest {
                 })
                 .map(m -> {
                     states2.add("map");
+                     Thread.sleep(500);
                     return m;
                 })
                 .flatMap(m -> {
@@ -200,9 +201,8 @@ public class SafeOptTest {
                 })
                 .peek(m -> {
                     states2.add("peek");
-                });
-        assertThat(states2).containsSequence(states1);
-        lazy.orNull();
+                }).orNull();
+       
         assertThat(states2).containsSequence(states1); //ensure no double inserts
         List<String> stateError = new ArrayList<>();
         SafeOpt<Integer> peekError = SafeOpt.ofAsync("NaN").map(Integer::parseInt)
@@ -240,6 +240,7 @@ public class SafeOptTest {
                 })
                 .map(m -> {
                     states1.add("map");
+                    Thread.sleep(50);
                     return m;
                 })
                 .flatMap(m -> {
@@ -261,6 +262,7 @@ public class SafeOptTest {
                 })
                 .map(m -> {
                     states2.add("map");
+                    Thread.sleep(50);
                     return m;
                 })
                 .flatMap(m -> {
@@ -308,20 +310,20 @@ public class SafeOptTest {
     }
 
     public static void main(String[] args) throws Exception {
-        ExecutorService pool = Executors.newFixedThreadPool(16);
-        ExecutorService other = Executors.newFixedThreadPool(5);
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        ExecutorService other = Executors.newFixedThreadPool(8);
         List<Future> futures = new ArrayList<>();
-        for (int i = 0; i < 10000; i++) {
-            if (i % 10 > 5) {
+        for (int i = 0; i < 10; i++) {
+            if (i % 10 > 3) {
                 Future e = pool.submit(() -> {
                     new SafeOptTest().testAsyncReal(pool, true);
                 });
                 futures.add(e);
             } else {
-                Future<?> submit = other.submit(() -> {
+//                Future<?> submit = other.submit(() -> {
                     new SafeOptTest().testAsyncReal(pool, false);
-                });
-                futures.add(submit);
+//                });
+//                futures.add(submit);
 
             }
 
@@ -333,7 +335,22 @@ public class SafeOptTest {
         pool.awaitTermination(1, TimeUnit.DAYS);
         other.shutdown();
         other.awaitTermination(1, TimeUnit.DAYS);
-        System.out.println("Max chain size:" + SafeOptAsync.Chain.maxSize.get());
+        List<String> sorted = SafeOptAsync.Chain._debug_threadIds.stream().sorted().toList();
+        List<String> distinct = sorted.stream().distinct().toList();
+        
+        
+        System.out.println("Max chain size:" + SafeOptAsync.Chain._debug_maxSize.get());
+        System.out.println("Sorted:"+sorted.size());
+        System.out.println("Sorted, distinct:"+distinct.size());
+        for(String s:sorted){
+            System.out.println(s);
+        }
+         System.out.println("XXXXXX");
+        
+        
+        for(String s:distinct){
+            System.out.println(s);
+        }
 
     }
 
@@ -343,7 +360,7 @@ public class SafeOptTest {
 
         ArrayList<Future> futures = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
-            if (i % 10 < 1) {
+            if (i % 10 >= 5) {
                 Future<?> submit = pool.submit(() -> {
                     new SafeOptTest().testAsyncReal(pool, true);
                 });

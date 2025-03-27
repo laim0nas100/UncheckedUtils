@@ -1,6 +1,7 @@
 package lt.lb.uncheckedutils.concurrent;
 
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -24,11 +25,12 @@ public class AtomicArray<T> {
     }
     
 
-    private CopyOnWriteArrayList<AtomicArrayEntry> array = new CopyOnWriteArrayList<>();
+    private List<AtomicArrayEntry> array;
     private AtomicInteger lastWrite = new AtomicInteger(-1);
     private AtomicInteger adds = new AtomicInteger(0);
 
-    public AtomicArray() {
+    public AtomicArray(int size){
+        array = new ArrayList<>(size);
     }
 
     public void add(T value) {

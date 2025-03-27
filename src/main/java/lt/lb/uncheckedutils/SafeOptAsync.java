@@ -1,13 +1,16 @@
 package lt.lb.uncheckedutils;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import lt.lb.uncheckedutils.concurrent.AtomicArray;
 import lt.lb.uncheckedutils.concurrent.CompletedFuture;
@@ -19,18 +22,16 @@ import lt.lb.uncheckedutils.concurrent.Submitter;
  */
 public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T> {
 
-    public static final CompletedFuture<SafeOpt> EMPTY_COMPLETED_FUTURE = new CompletedFuture<>(SafeOpt.empty());
+    private static final boolean DEBUG = false;
 
     public static class SingleCompletion {
 
-        public final int index;
         public final Function<SafeOpt, SafeOpt> func;
         public final CompletableFuture<SafeOpt> result = new CompletableFuture<>();
         public final AtomicBoolean initiated = new AtomicBoolean(false);
         protected SafeOpt completed;
 
-        public SingleCompletion(int index, Function<SafeOpt, SafeOpt> func) {
-            this.index = index;
+        public SingleCompletion(Function<SafeOpt, SafeOpt> func) {
             this.func = Objects.requireNonNull(func);
         }
 
@@ -46,9 +47,21 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
     public static class Chain extends AtomicArray<SingleCompletion> {
 
-        public static final int FORK_AT = 10;
+        /**
+         * DEBUG VARAIBLES
+         */
+        static AtomicLong idGen = new AtomicLong(0);
+        final long id;
+        public final static Collection<String> _debug_threadIds = new LinkedBlockingDeque<>();
 
-        public static AtomicInteger maxSize = new AtomicInteger();
+        public final static AtomicInteger _debug_maxSize = new AtomicInteger();
+
+        final Collection<String> threads = new ArrayList<>();
+
+        /**
+         *
+         */
+        public static final int FORK_AT = 10;
 
         public final Future<SafeOpt> base;
 
@@ -58,24 +71,25 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         public final int forkAt;
 
         public Chain(Future<SafeOpt> base) {
-            super();
-            this.forkAt = FORK_AT;
-            this.base = base;
+            this(base, FORK_AT);
         }
 
         public Chain(Future<SafeOpt> base, int forkAt) {
-            super();
+            super(forkAt + 2);
             this.base = base;
             this.forkAt = forkAt;
+            id = DEBUG ? idGen.incrementAndGet() : 0L;
         }
 
         @Override
         public void add(SingleCompletion value) {
             super.add(value);
 
-            maxSize.accumulateAndGet(size(), (c, s) -> {
-                return Math.max(c, s);
-            });
+            if (DEBUG) {
+                _debug_maxSize.accumulateAndGet(size(), (c, s) -> {
+                    return Math.max(c, s);
+                });
+            }
         }
 
         public Chain startNew(int index) {
@@ -90,7 +104,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
     protected SafeOpt<T> resolve(boolean onlyTryWork) {
         if (index < 0 || chain == null) {
-            if(onlyTryWork){
+            if (onlyTryWork) {
                 return null;
             }
             return await(base);
@@ -98,18 +112,17 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
         for (int rep = 0; rep < 100; rep++) {
             if (!onlyTryWork && chain.getLastWriteIndex() >= index) { // this stage is completed
-                
                 return awaitCast(chain.read(index).result);
             }
 
             if (chain.running.compareAndSet(false, true)) {
+
                 try {
                     while (true) {
                         int lastWrite = chain.getLastWriteIndex();
-                        int size = chain.size();
 
                         //snapshot lastWrite and size
-                        if (lastWrite >= 0 && lastWrite + 1 >= size) {
+                        if (lastWrite >= 0 && lastWrite + 1 >= chain.size()) {
                             break;
                         }
 
@@ -119,10 +132,14 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                         } else {
                             current[0] = awaitCast(chain.read(lastWrite).result);
                         }
+                        if (DEBUG) {
+                            chain.threads.add(Thread.currentThread().getName());
+                            Chain._debug_threadIds.add(chain.id + " " + chain.threads);
+                        }
 
                         int i = lastWrite + 1;
 
-                        for (; i < size; i++) {//during running, new functors can be supplied
+                        for (; i < chain.size(); i++) {//during running, new functors can be supplied
                             chain.write(i, func -> {
                                 current[0] = func.complete(current[0]);
 
@@ -137,7 +154,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
             }
         }
-        if(onlyTryWork){
+        if (onlyTryWork) {
             return null;
         }
 
@@ -145,7 +162,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
     }
 
-    static <A, B> SafeOpt<A> awaitCast(Future<SafeOpt> future) {
+    static <A> SafeOpt<A> awaitCast(Future<SafeOpt> future) {
         return await((Future) future);
     }
 
@@ -177,21 +194,20 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         } else {
             if (chain.forkAt > 0 && chain.forkAt <= index + 1) {
                 int newIndex = 0;
-                SingleCompletion completion = new SingleCompletion(newIndex, (Function) func);
+                SingleCompletion completion = new SingleCompletion((Function) func);
                 Chain newChain = chain.startNew(index);
                 newChain.add(completion);
                 SafeOptAsync safeOpt = new SafeOptAsync<>(submitter, (Future) completion.result, newIndex, true, newChain);
                 SafeOptAsync me = this;
                 me.resolve(true);
                 submitter.submit(() -> {
-                    
                     safeOpt.resolve(true);
                     return null;
                 });
                 return safeOpt;
 
             } else {// no fork
-                SingleCompletion completion = new SingleCompletion(index + 1, (Function) func);
+                SingleCompletion completion = new SingleCompletion((Function) func);
                 chain.add(completion);
 
                 SafeOptAsync<O> produce = produce(completion);
@@ -205,7 +221,6 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                         } finally {
                             chain.runningSubmittions.decrementAndGet();
                         }
-
                     });
                 }
                 return produce;
