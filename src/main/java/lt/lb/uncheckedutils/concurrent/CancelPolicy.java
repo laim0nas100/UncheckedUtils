@@ -14,8 +14,25 @@ public class CancelPolicy {
     private final AtomicReference<Throwable> state = new AtomicReference<>();
     private SafeOpt cancelOpt;
     
-    public boolean cancelOnError = false;
+    public final boolean cancelOnError;
+    public final boolean interruptableAwait;
+    private final ThreadParkSpace parkedThreads;
 
+    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, int expectedThreads) {
+        this(cancelOnError,interruptableAwait, new ThreadParkSpace(expectedThreads));
+    }
+    
+    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, ThreadParkSpace parkedThreads) {
+        this.cancelOnError = cancelOnError;
+        this.interruptableAwait = interruptableAwait;
+        this.parkedThreads = parkedThreads;
+    }
+
+    public CancelPolicy() {
+        this(false,false,null);
+    }
+    
+    
     public void cancel(Throwable error) {
         if(error == null){
             error = new PassableException("Cancelled explicitly");
@@ -31,6 +48,26 @@ public class CancelPolicy {
     
     public SafeOpt getError(){
         return cancelOpt;
+    }
+    
+    public int parkIfSupported(){
+        if(parkedThreads == null){
+            return -1;
+        }
+        return parkedThreads.park();
+    }
+    
+    public boolean unparkIfSupported(){
+        if(parkedThreads == null){
+            return false;
+        }
+        return parkedThreads.unpark();
+    }
+    
+    public void interruptParkedThreads(){
+        for(Thread thread:parkedThreads.getThreads()){
+            thread.interrupt();
+        }
     }
     
     

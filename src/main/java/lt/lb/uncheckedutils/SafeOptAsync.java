@@ -8,10 +8,14 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import lt.lb.uncheckedutils.concurrent.AtomicArray;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.CompletedFuture;
@@ -53,7 +57,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             }
             return CANCELLED;
         }
-        
+
         public SafeOpt cancel(SafeOpt cancelOpt) {
             if (initiated.compareAndSet(false, true)) {
                 completed = cancelOpt == null ? CANCELLED : cancelOpt;
@@ -78,7 +82,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         final Collection<String> threads = new ArrayList<>();
 
         /**
-         *
+         * State
          */
         public static final int FORK_AT = 10;
 
@@ -90,18 +94,18 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         public final int forkAt;
 
         public Chain(Future<SafeOpt> base, int forkAt, CancelPolicy cancelledRef) {
-            super(forkAt, cancelledRef);
+            super(forkAt + 2, cancelledRef);
             this.base = base;
             this.forkAt = forkAt;
             id = DEBUG ? idGen.incrementAndGet() : 0L;
         }
 
         public Chain(Future<SafeOpt> base) {
-            this(base, FORK_AT + 2, null);
+            this(base, FORK_AT, null);
         }
 
         public Chain(Future<SafeOpt> base, CancelPolicy cancelledRef) {
-            this(base, FORK_AT + 2, cancelledRef);
+            this(base, FORK_AT, cancelledRef);
         }
 
         @Override
@@ -171,18 +175,21 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
                             chain.write(i, func -> {
                                 if (chain.isCancelled()) {
-                                    if(chain.cp != null){
+                                    if (chain.cp != null) {
                                         func.cancel(chain.cp.getError());
-                                    }else{
+                                    } else {
                                         func.cancel();
                                     }
-                                    
+
                                 } else {
                                     SafeOpt complete = func.complete(current[0]);
                                     current[0] = complete;
                                     if (chain.cp != null) {
                                         if (complete.hasError() && chain.cp.cancelOnError) {
                                             chain.cp.cancel(complete.rawException());
+                                            if (chain.cp.interruptableAwait) {
+                                                chain.cp.interruptParkedThreads();
+                                            }
                                         }
                                     }
 
@@ -210,23 +217,71 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
     }
 
-    static <A> SafeOpt<A> awaitCast(Future<SafeOpt> future) {
+    <A> SafeOpt<A> awaitCast(Future<SafeOpt> future) {
         return await((Future) future);
     }
 
-    static <A> SafeOpt<A> await(Future<SafeOpt<A>> future) {
+    <A> SafeOpt<A> await(Future<SafeOpt<A>> future) {
         try {
-            return (SafeOpt) future.get();
-        } catch (InterruptedException ex) {
+            if (chain == null || future.isDone()) {
+                return (SafeOpt) future.get();
+            }
+        } catch (InterruptedException | ExecutionException ex) {// should never happen
             return SafeOpt.error(ex);
-        } catch (ExecutionException ex) { // should not happen, since SafeOpt captures exceptions
-            Throwable cause = ex.getCause();
-            if (cause != null) {
-                return SafeOpt.error(cause);
-            } else {
-                return SafeOpt.error(ex);
+        }
+
+        int parked = -1;
+        if (chain.cp != null && chain.cp.interruptableAwait) { // to be interruped
+            parked = chain.cp.parkIfSupported();
+        }
+        SafeOpt<A> toReturn = null;
+        boolean keepTrying = true;
+        boolean doItMyself = false;
+        int tries = 5;
+        while (keepTrying && tries > 0) {
+            tries--;
+            try {
+
+                toReturn = future.get(1, TimeUnit.SECONDS);
+                keepTrying = false;
+            } catch (InterruptedException ex) {
+                keepTrying = false;
+                if (chain.cp != null && chain.isCancelled()) {
+                    toReturn = chain.cp.getError();
+                } else {
+                    toReturn = SafeOpt.error(ex);
+                }
+            } catch (ExecutionException ex) {
+                keepTrying = false;
+                Throwable cause = ex.getCause();
+                if (cause != null) {
+                    toReturn = SafeOpt.error(cause);
+                } else {
+                    toReturn = SafeOpt.error(ex);
+                }
+            } catch (TimeoutException ex) {
+                if (chain.cp != null && chain.isCancelled()) {
+                    keepTrying = false;
+                    toReturn = chain.cp.getError();
+                } else { // maybe not running
+                    if (!chain.running.get()) {
+                        doItMyself = true;
+                        keepTrying = false;
+                    }
+                }
             }
         }
+
+        if (parked >= 0) {
+            chain.cp.unparkIfSupported();
+        }
+        if (tries <= 0) {
+            return SafeOpt.error(new PassableException("Out of tries, deadlock"));
+        }
+        if (doItMyself) {
+            return (SafeOpt) resolve(false);
+        }
+        return toReturn;
     }
 
     @Override
@@ -241,14 +296,21 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             return func.apply(collapse());
         } else {
             if (chain.forkAt > 0 && chain.forkAt <= index + 1) {
+
                 int newIndex = 0;
                 SingleCompletion completion = new SingleCompletion((Function) func);
                 Chain newChain = chain.startNew(index);
                 newChain.add(completion);
+
+                if (DEBUG) {
+                    Chain._debug_threadIds.add(chain.id + " fork to " + newChain.id);
+                }
+
                 SafeOptAsync safeOpt = new SafeOptAsync<>(submitter, (Future) completion.result, newIndex, true, newChain);
                 SafeOptAsync me = this;
                 me.resolve(true);
                 submitter.submit(() -> {
+
                     safeOpt.resolve(true);
                     return null;
                 });

@@ -339,16 +339,20 @@ public class SafeOptTest {
         pool.awaitTermination(1, TimeUnit.DAYS);
         other.shutdown();
         other.awaitTermination(1, TimeUnit.DAYS);
+        printDebug();
+    }
+
+    public static void printDebug() {
         List<String> sorted = SafeOptAsync.Chain._debug_threadIds.stream().sorted().toList();
         List<String> distinct = sorted.stream().distinct().toList();
 
         System.out.println("Max chain size:" + SafeOptAsync.Chain._debug_maxSize.get());
-        System.out.println("Sorted:" + sorted.size());
+//        System.out.println("Sorted:" + sorted.size());
         System.out.println("Sorted, distinct:" + distinct.size());
-        for (String s : sorted) {
-            System.out.println(s);
-        }
-        System.out.println("XXXXXX");
+//        for (String s : sorted) {
+//            System.out.println(s);
+//        }
+//        System.out.println("XXXXXX");
 
         for (String s : distinct) {
             System.out.println(s);
@@ -356,9 +360,15 @@ public class SafeOptTest {
     }
 
     public static void main(String[] args) throws Exception {
+
+        new SafeOptTest().testAsyncReal();
+        printDebug();
+    }
+
+    @Test
+    public void testCancel() throws Exception {
         SafeScope scope = new SafeScope();
-        scope.cp = new CancelPolicy();
-        scope.cp.cancelOnError = true;
+        scope.cp = new CancelPolicy(true, true, 16);
         scope.submitter = Submitter.DEFAULT_POOL;
 
         SafeOpt<String> val1 = scope.of(10)
@@ -378,9 +388,6 @@ public class SafeOptTest {
                     return m + 1;
                 })
                 .map(m -> {
-                    if(false){
-                        return null;
-                    }
                     Thread.sleep(1000);
                     System.out.println("Sleep 1");
                     return m + 1;
@@ -457,7 +464,7 @@ public class SafeOptTest {
                 })
                 .map(m -> String.valueOf(m));
         SafeOpt<Integer> val2 = scope.of("NaN").map(m -> {
-            Thread.sleep(12200);
+            Thread.sleep(3300);
 //            throw new PassableException("No reason lol");
             return Integer.parseInt(m);
         });
@@ -465,30 +472,27 @@ public class SafeOptTest {
         System.out.println("Waiting for finish");
 //         System.out.println(val1.throwIfErrorUnwrapping(CancelException.class));
 
-        try {
-            System.out.println(val1.peek(p -> {
-                System.out.println("Peeked");
-            }).throwAnyGet());
-        } catch (Exception ex) {
-            System.out.println(ex);
-            ex.printStackTrace();
-        }
-
+        Assertions.assertThatExceptionOfType(CancelException.class).isThrownBy(() -> {
+            val1.throwAnyOrNull();
+        });
     }
 
-//    @Test
+    @Test
     public void testAsyncReal() throws InterruptedException, ExecutionException {
         ExecutorService pool = Executors.newFixedThreadPool(16);
-
+        ExecutorService other = Executors.newFixedThreadPool(16);
         ArrayList<Future> futures = new ArrayList<>();
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 100; i++) {
             if (i % 10 >= 5) {
                 Future<?> submit = pool.submit(() -> {
                     new SafeOptTest().testAsyncReal(pool, true);
                 });
                 futures.add(submit);
             } else {
-                new SafeOptTest().testAsyncReal(pool, false);
+                Future<?> submit = other.submit(() -> {
+                    new SafeOptTest().testAsyncReal(pool, true);
+                });
+                futures.add(submit);
             }
 
         }
@@ -496,7 +500,9 @@ public class SafeOptTest {
             f.get();
         }
         pool.shutdown();
+        other.shutdown();
         pool.awaitTermination(1, TimeUnit.DAYS);
+        other.awaitTermination(1, TimeUnit.DAYS);
 
     }
 }
