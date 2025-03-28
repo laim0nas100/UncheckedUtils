@@ -1,5 +1,7 @@
 package lt.lb.uncheckedutils;
 
+import java.io.PrintStream;
+import java.io.PrintWriter;
 import java.util.Objects;
 
 /**
@@ -19,13 +21,13 @@ import java.util.Objects;
  *
  * @author laim0nas100
  */
-public class PassableException extends RuntimeException {
+public class PassableException extends StacklessRuntimeException {
 
     protected final Class<? extends Throwable> exceptionType;
     protected final Object data;
 
     public PassableException(Class<? extends Throwable> cls, String message, Object data) {
-        super(message, null, false, false);
+        super(message, null);
         exceptionType = Objects.requireNonNull(cls, "Exception type must not be null");
         this.data = data;
     }
@@ -116,14 +118,16 @@ public class PassableException extends RuntimeException {
         return false;
     }
 
-    /**
-     * Does nothing.
-     *
-     * @return this
-     */
     @Override
-    public Throwable fillInStackTrace() {
-        return this;
+    public void printStackTrace(PrintWriter s) {
+    }
+
+    @Override
+    public void printStackTrace(PrintStream s) {
+    }
+
+    @Override
+    public void printStackTrace() {
     }
 
 }

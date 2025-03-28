@@ -12,10 +12,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
+import lt.lb.uncheckedutils.CancelException;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.SafeOptAsync;
+import lt.lb.uncheckedutils.concurrent.CancelPolicy;
+import lt.lb.uncheckedutils.concurrent.SafeScope;
+import lt.lb.uncheckedutils.concurrent.Submitter;
 import org.assertj.core.api.Assertions;
 import static org.assertj.core.api.Assertions.assertThat;
 import org.assertj.core.api.ThrowableTypeAssert;
@@ -188,7 +192,7 @@ public class SafeOptTest {
                 })
                 .map(m -> {
                     states2.add("map");
-                     Thread.sleep(500);
+                    Thread.sleep(500);
                     return m;
                 })
                 .flatMap(m -> {
@@ -202,7 +206,7 @@ public class SafeOptTest {
                 .peek(m -> {
                     states2.add("peek");
                 }).orNull();
-       
+
         assertThat(states2).containsSequence(states1); //ensure no double inserts
         List<String> stateError = new ArrayList<>();
         SafeOpt<Integer> peekError = SafeOpt.ofAsync("NaN").map(Integer::parseInt)
@@ -309,7 +313,7 @@ public class SafeOptTest {
 
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void benchTest() throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(8);
         ExecutorService other = Executors.newFixedThreadPool(8);
         List<Future> futures = new ArrayList<>();
@@ -321,7 +325,7 @@ public class SafeOptTest {
                 futures.add(e);
             } else {
 //                Future<?> submit = other.submit(() -> {
-                    new SafeOptTest().testAsyncReal(pool, false);
+                new SafeOptTest().testAsyncReal(pool, false);
 //                });
 //                futures.add(submit);
 
@@ -337,19 +341,137 @@ public class SafeOptTest {
         other.awaitTermination(1, TimeUnit.DAYS);
         List<String> sorted = SafeOptAsync.Chain._debug_threadIds.stream().sorted().toList();
         List<String> distinct = sorted.stream().distinct().toList();
-        
-        
+
         System.out.println("Max chain size:" + SafeOptAsync.Chain._debug_maxSize.get());
-        System.out.println("Sorted:"+sorted.size());
-        System.out.println("Sorted, distinct:"+distinct.size());
-        for(String s:sorted){
+        System.out.println("Sorted:" + sorted.size());
+        System.out.println("Sorted, distinct:" + distinct.size());
+        for (String s : sorted) {
             System.out.println(s);
         }
-         System.out.println("XXXXXX");
-        
-        
-        for(String s:distinct){
+        System.out.println("XXXXXX");
+
+        for (String s : distinct) {
             System.out.println(s);
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        SafeScope scope = new SafeScope();
+        scope.cp = new CancelPolicy();
+        scope.cp.cancelOnError = true;
+        scope.submitter = Submitter.DEFAULT_POOL;
+
+        SafeOpt<String> val1 = scope.of(10)
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 1");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 2");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 3");
+                    return m + 1;
+                })
+                .map(m -> {
+                    if(false){
+                        return null;
+                    }
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 1");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 2");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 3");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 1");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 2");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 3");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 1");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 2");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 3");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 1");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 2");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 3");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 1");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 2");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 3");
+                    return m + 1;
+                })
+                .map(m -> String.valueOf(m));
+        SafeOpt<Integer> val2 = scope.of("NaN").map(m -> {
+            Thread.sleep(12200);
+//            throw new PassableException("No reason lol");
+            return Integer.parseInt(m);
+        });
+
+        System.out.println("Waiting for finish");
+//         System.out.println(val1.throwIfErrorUnwrapping(CancelException.class));
+
+        try {
+            System.out.println(val1.peek(p -> {
+                System.out.println("Peeked");
+            }).throwAnyGet());
+        } catch (Exception ex) {
+            System.out.println(ex);
+            ex.printStackTrace();
         }
 
     }

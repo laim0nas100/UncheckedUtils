@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import lt.lb.uncheckedutils.concurrent.AtomicArray;
+import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.CompletedFuture;
 import lt.lb.uncheckedutils.concurrent.Submitter;
 
@@ -21,6 +22,8 @@ import lt.lb.uncheckedutils.concurrent.Submitter;
  * @author laim0nas100
  */
 public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T> {
+
+    public static final SafeOpt CANCELLED = SafeOpt.error(new PassableException("Cancelled"));
 
     private static final boolean DEBUG = false;
 
@@ -38,6 +41,22 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         public SafeOpt complete(SafeOpt val) {
             if (initiated.compareAndSet(false, true)) {
                 completed = func.apply(val);
+                result.complete(completed);
+            }
+            return completed;
+        }
+
+        public SafeOpt cancel() {
+            if (initiated.compareAndSet(false, true)) {
+                completed = CANCELLED;
+                result.complete(CANCELLED);
+            }
+            return CANCELLED;
+        }
+        
+        public SafeOpt cancel(SafeOpt cancelOpt) {
+            if (initiated.compareAndSet(false, true)) {
+                completed = cancelOpt == null ? CANCELLED : cancelOpt;
                 result.complete(completed);
             }
             return completed;
@@ -70,15 +89,19 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
         public final int forkAt;
 
-        public Chain(Future<SafeOpt> base) {
-            this(base, FORK_AT);
-        }
-
-        public Chain(Future<SafeOpt> base, int forkAt) {
-            super(forkAt + 2);
+        public Chain(Future<SafeOpt> base, int forkAt, CancelPolicy cancelledRef) {
+            super(forkAt, cancelledRef);
             this.base = base;
             this.forkAt = forkAt;
             id = DEBUG ? idGen.incrementAndGet() : 0L;
+        }
+
+        public Chain(Future<SafeOpt> base) {
+            this(base, FORK_AT + 2, null);
+        }
+
+        public Chain(Future<SafeOpt> base, CancelPolicy cancelledRef) {
+            this(base, FORK_AT + 2, cancelledRef);
         }
 
         @Override
@@ -97,17 +120,17 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                 throw new IllegalArgumentException("New chain index bigger than chain size:" + index + " " + getLastWriteIndex());
             }
             SingleCompletion newBase = read(index); // is new base
-            return new Chain(newBase.result);
+            return new Chain(newBase.result, this.forkAt, cp);
         }
 
     }
 
     protected SafeOpt<T> resolve(boolean onlyTryWork) {
         if (index < 0 || chain == null) {
-            if (onlyTryWork) {
-                return null;
-            }
             return await(base);
+        }
+        if (!onlyTryWork && chain.isCancelled()) {
+            return CANCELLED;
         }
 
         for (int rep = 0; rep < 100; rep++) {
@@ -119,6 +142,9 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
                 try {
                     while (true) {
+                        if (!onlyTryWork && chain.isCancelled()) {
+                            return CANCELLED;
+                        }
                         int lastWrite = chain.getLastWriteIndex();
 
                         //snapshot lastWrite and size
@@ -127,11 +153,13 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                         }
 
                         SafeOpt[] current = new SafeOpt[1];
-                        if (lastWrite < 0) {
+                        if (chain.isCancelled()) {//do not assign
+                        } else if (lastWrite < 0) {
                             current[0] = awaitCast(chain.base);
                         } else {
                             current[0] = awaitCast(chain.read(lastWrite).result);
                         }
+
                         if (DEBUG) {
                             chain.threads.add(Thread.currentThread().getName());
                             Chain._debug_threadIds.add(chain.id + " " + chain.threads);
@@ -140,8 +168,25 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                         int i = lastWrite + 1;
 
                         for (; i < chain.size(); i++) {//during running, new functors can be supplied
+
                             chain.write(i, func -> {
-                                current[0] = func.complete(current[0]);
+                                if (chain.isCancelled()) {
+                                    if(chain.cp != null){
+                                        func.cancel(chain.cp.getError());
+                                    }else{
+                                        func.cancel();
+                                    }
+                                    
+                                } else {
+                                    SafeOpt complete = func.complete(current[0]);
+                                    current[0] = complete;
+                                    if (chain.cp != null) {
+                                        if (complete.hasError() && chain.cp.cancelOnError) {
+                                            chain.cp.cancel(complete.rawException());
+                                        }
+                                    }
+
+                                }
 
                                 return func;
                             });
@@ -156,6 +201,9 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         }
         if (onlyTryWork) {
             return null;
+        }
+        if (chain.isCancelled()) {
+            return CANCELLED;
         }
 
         return awaitCast(chain.read(index).result);
@@ -290,6 +338,11 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
     public static <A> SafeOptAsync<A> ofNullable(Submitter service, A value) {
         CompletedFuture<SafeOpt<A>> completedFuture = new CompletedFuture<>(SafeOpt.ofNullable(value));
         return new SafeOptAsync<>(service, completedFuture, -1, true, new Chain((Future) completedFuture));
+    }
+
+    public static <A> SafeOptAsync<A> ofNullable(Submitter service, A value, CancelPolicy cp) {
+        CompletedFuture<SafeOpt<A>> completedFuture = new CompletedFuture<>(SafeOpt.ofNullable(value));
+        return new SafeOptAsync<>(service, completedFuture, -1, true, new Chain((Future) completedFuture, cp));
     }
 
 }

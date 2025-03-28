@@ -11,6 +11,7 @@ import java.util.function.Function;
  * @author laim0nas100
  */
 public class AtomicArray<T> {
+
     public static class AtomicArrayEntry<T> {
 
         private final AtomicLock lock = new AtomicLock();
@@ -23,19 +24,22 @@ public class AtomicArray<T> {
             this.value = value;
         }
     }
+
+    protected final List<AtomicArrayEntry> array;
+    protected final AtomicInteger lastWrite = new AtomicInteger(-1);
+    public final CancelPolicy cp;
+
+    public AtomicArray(int size) {
+        this(size,null);
+    }
     
-
-    private List<AtomicArrayEntry> array;
-    private AtomicInteger lastWrite = new AtomicInteger(-1);
-    private AtomicInteger adds = new AtomicInteger(0);
-
-    public AtomicArray(int size){
+    public AtomicArray(int size, CancelPolicy cancelledRef) {
         array = new ArrayList<>(size);
+        cp = cancelledRef;
     }
 
     public void add(T value) {
         array.add(new AtomicArrayEntry<>(value));
-        adds.incrementAndGet();
     }
 
     public T read(final int index) {
@@ -46,7 +50,6 @@ public class AtomicArray<T> {
     public T read(final int index, Consumer< ? super T> func) {
         while (true) {
             AtomicArrayEntry<T> entry = array.get(index);
-
             if (entry.lock.tryRead()) {
                 try {
                     func.accept(entry.value);
@@ -62,7 +65,6 @@ public class AtomicArray<T> {
     public T write(final int index, Function<? super T, ? extends T> func) {
         while (true) {
             AtomicArrayEntry<T> entry = array.get(index);
-
             if (entry.lock.tryWrite()) {
                 try {
                     T apply = func.apply(entry.value);
@@ -79,13 +81,17 @@ public class AtomicArray<T> {
         }
 
     }
+        
+    public boolean isCancelled() {
+        return cp == null ? false : cp.cancelled();
+    }
 
     public int getLastWriteIndex() {
         return lastWrite.get();
     }
 
     public int size() {
-        return adds.get();
+        return array.size();
     }
 
 }

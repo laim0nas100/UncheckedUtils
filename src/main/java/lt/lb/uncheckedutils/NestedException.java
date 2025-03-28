@@ -11,7 +11,7 @@ import java.util.Objects;
  *
  * @author laim0nas100
  */
-public class NestedException extends RuntimeException {
+public class NestedException extends StacklessRuntimeException {
 
     protected Throwable error;
 
@@ -75,45 +75,8 @@ public class NestedException extends RuntimeException {
     }
 
     protected NestedException(Throwable e) {
-        super("Nested exception, to get real exception, call getCause", e, false, false);
+        super("Nested exception, to get real exception, call getCause", e);
         error = e;
-    }
-
-    /**
-     * Does nothing.
-     *
-     * @return this
-     */
-    @Override
-    public Throwable fillInStackTrace() {
-        return this;
-    }
-
-    /**
-     * Does nothing.
-     */
-    @Override
-    public void setStackTrace(StackTraceElement[] stackTrace) {
-    }
-
-    @Override
-    public StackTraceElement[] getStackTrace() {
-        return getCause().getStackTrace();
-    }
-
-    @Override
-    public void printStackTrace(PrintWriter s) {
-        getCause().printStackTrace(s);
-    }
-
-    @Override
-    public void printStackTrace(PrintStream s) {
-        getCause().printStackTrace(s);
-    }
-
-    @Override
-    public void printStackTrace() {
-        getCause().printStackTrace();
     }
 
     @Override
@@ -150,6 +113,26 @@ public class NestedException extends RuntimeException {
     @Override
     public String getMessage() {
         return getCause().getMessage();
+    }
+    
+    @Override
+    public StackTraceElement[] getStackTrace() {
+        return getCause().getStackTrace();
+    }
+
+    @Override
+    public void printStackTrace(PrintWriter s) {
+        getCause().printStackTrace(s);
+    }
+
+    @Override
+    public void printStackTrace(PrintStream s) {
+        getCause().printStackTrace(s);
+    }
+
+    @Override
+    public void printStackTrace() {
+        getCause().printStackTrace();
     }
 
 }
