@@ -5,7 +5,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -17,7 +16,6 @@ import lt.lb.uncheckedutils.CancelException;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
-import lt.lb.uncheckedutils.SafeOptAsyncChain;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.SafeScope;
 import lt.lb.uncheckedutils.concurrent.Submitter;
@@ -337,30 +335,11 @@ public class SafeOptTest {
         pool.awaitTermination(1, TimeUnit.DAYS);
         other.shutdown();
         other.awaitTermination(1, TimeUnit.DAYS);
-        printDebug();
-    }
-
-    public static void printDebug() {
-        List<String> sorted = SafeOptAsyncChain.Chain._debug_threadIds.stream().sorted().toList();
-        List<String> distinct = sorted.stream().distinct().toList();
-
-        System.out.println("Max chain size:" + SafeOptAsyncChain.Chain._debug_maxSize.get());
-//        System.out.println("Sorted:" + sorted.size());
-        System.out.println("Sorted, distinct:" + distinct.size());
-//        for (String s : sorted) {
-//            System.out.println(s);
-//        }
-//        System.out.println("XXXXXX");
-
-        for (String s : distinct) {
-            System.out.println(s);
-        }
     }
 
     public static void main(String[] args) throws Exception {
 
 //        new SafeOptTest().testAsyncReal();
-        printDebug();
         new SafeOptTest().testCancel();
 
         ThreadFactory factory = Thread.ofVirtual().factory();
