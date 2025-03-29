@@ -69,8 +69,8 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     @Override
     public default SafeOpt<Throwable> getError() {
-//        collapse();
-        return produceNew(rawException(), null);
+        return collapse().getError();
+//        return produceNew(rawException(), null);
     }
 
     /**

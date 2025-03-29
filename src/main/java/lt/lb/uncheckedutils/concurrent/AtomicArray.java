@@ -2,6 +2,7 @@ package lt.lb.uncheckedutils.concurrent;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -34,7 +35,7 @@ public class AtomicArray<T> {
     }
     
     public AtomicArray(int size, CancelPolicy cancelledRef) {
-        array = new ArrayList<>(size);
+        array = new CopyOnWriteArrayList<>();
         cp = cancelledRef;
     }
 

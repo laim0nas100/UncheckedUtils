@@ -213,8 +213,11 @@ public interface SafeOpt<T> {
      * @param val
      * @return
      */
-    public static <T> SafeOptCollapse<T> ofAsync(Submitter submitter, T val) {
-        return SafeOptAsync.ofNullable(submitter, val);
+    public static <T> SafeOpt<T> ofAsync(Submitter submitter, T val) {
+        if(val == null){
+            return SafeOpt.empty();
+        }
+        return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.of(val)),true,null);
     }
 
     /**
@@ -227,8 +230,11 @@ public interface SafeOpt<T> {
      * @param val
      * @return
      */
-    public static <T> SafeOptCollapse<T> ofAsync(ExecutorService service, T val) {
-        return SafeOptAsync.ofNullable(service, val);
+    public static <T> SafeOpt<T> ofAsync(ExecutorService service, T val) {
+        if(val == null){
+            return SafeOpt.empty();
+        }
+        return new SafeOptAsync<>(Submitter.ofExecutorService(service), new CompletedFuture<>(SafeOpt.of(val)),true,null);
     }
 
     /**
@@ -240,8 +246,11 @@ public interface SafeOpt<T> {
      * @param val
      * @return
      */
-    public static <T> SafeOptCollapse<T> ofAsync(T val) {
-        return SafeOptAsync.ofNullable(val);
+    public static <T> SafeOpt<T> ofAsync(T val) {
+        if(val == null){
+            return SafeOpt.empty();
+        }
+        return new SafeOptAsync<>(Submitter.DEFAULT_POOL, new CompletedFuture<>(SafeOpt.of(val)),true,null);
     }
 
     /**

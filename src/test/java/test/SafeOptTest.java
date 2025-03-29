@@ -11,12 +11,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import lt.lb.uncheckedutils.CancelException;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
-import lt.lb.uncheckedutils.SafeOptAsync;
+import lt.lb.uncheckedutils.SafeOptAsyncChain;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.SafeScope;
 import lt.lb.uncheckedutils.concurrent.Submitter;
@@ -238,13 +239,11 @@ public class SafeOptTest {
         SafeOpt<Integer> lazy = SafeOpt.ofAsync(service, "10")
                 .map(Integer::parseInt)
                 .filter(f -> {
-
                     states1.add("filter");
                     return true;
                 })
                 .map(m -> {
                     states1.add("map");
-                    Thread.sleep(50);
                     return m;
                 })
                 .flatMap(m -> {
@@ -266,7 +265,6 @@ public class SafeOptTest {
                 })
                 .map(m -> {
                     states2.add("map");
-                    Thread.sleep(50);
                     return m;
                 })
                 .flatMap(m -> {
@@ -343,10 +341,10 @@ public class SafeOptTest {
     }
 
     public static void printDebug() {
-        List<String> sorted = SafeOptAsync.Chain._debug_threadIds.stream().sorted().toList();
+        List<String> sorted = SafeOptAsyncChain.Chain._debug_threadIds.stream().sorted().toList();
         List<String> distinct = sorted.stream().distinct().toList();
 
-        System.out.println("Max chain size:" + SafeOptAsync.Chain._debug_maxSize.get());
+        System.out.println("Max chain size:" + SafeOptAsyncChain.Chain._debug_maxSize.get());
 //        System.out.println("Sorted:" + sorted.size());
         System.out.println("Sorted, distinct:" + distinct.size());
 //        for (String s : sorted) {
@@ -361,14 +359,20 @@ public class SafeOptTest {
 
     public static void main(String[] args) throws Exception {
 
-        new SafeOptTest().testAsyncReal();
+//        new SafeOptTest().testAsyncReal();
         printDebug();
+        new SafeOptTest().testCancel();
+
+        ThreadFactory factory = Thread.ofVirtual().factory();
     }
 
     @Test
     public void testCancel() throws Exception {
         SafeScope scope = new SafeScope();
         scope.cp = new CancelPolicy(true, true, 16);
+//        ExecutorService pool = Executors.newFixedThreadPool(12);
+//        scope.submitter = Submitter.ofExecutorService(pool);
+
         scope.submitter = Submitter.DEFAULT_POOL;
 
         SafeOpt<String> val1 = scope.of(10)
@@ -389,116 +393,82 @@ public class SafeOptTest {
                 })
                 .map(m -> {
                     Thread.sleep(1000);
-                    System.out.println("Sleep 1");
+                    System.out.println("Sleep 4");
                     return m + 1;
                 })
                 .map(m -> {
                     Thread.sleep(1000);
-                    System.out.println("Sleep 2");
+                    System.out.println("Sleep 5");
                     return m + 1;
                 })
                 .map(m -> {
                     Thread.sleep(1000);
-                    System.out.println("Sleep 3");
+                    System.out.println("Sleep 6");
                     return m + 1;
                 })
                 .map(m -> {
                     Thread.sleep(1000);
-                    System.out.println("Sleep 1");
+                    System.out.println("Sleep 7");
                     return m + 1;
                 })
                 .map(m -> {
                     Thread.sleep(1000);
-                    System.out.println("Sleep 2");
+                    System.out.println("Sleep 8");
                     return m + 1;
                 })
                 .map(m -> {
                     Thread.sleep(1000);
-                    System.out.println("Sleep 3");
-                    return m + 1;
-                })
-                .map(m -> {
-                    Thread.sleep(1000);
-                    System.out.println("Sleep 1");
-                    return m + 1;
-                })
-                .map(m -> {
-                    Thread.sleep(1000);
-                    System.out.println("Sleep 2");
-                    return m + 1;
-                })
-                .map(m -> {
-                    Thread.sleep(1000);
-                    System.out.println("Sleep 3");
-                    return m + 1;
-                })
-                .map(m -> {
-                    Thread.sleep(1000);
-                    System.out.println("Sleep 1");
-                    return m + 1;
-                })
-                .map(m -> {
-                    Thread.sleep(1000);
-                    System.out.println("Sleep 2");
-                    return m + 1;
-                })
-                .map(m -> {
-                    Thread.sleep(1000);
-                    System.out.println("Sleep 3");
-                    return m + 1;
-                })
-                .map(m -> {
-                    Thread.sleep(1000);
-                    System.out.println("Sleep 1");
-                    return m + 1;
-                })
-                .map(m -> {
-                    Thread.sleep(1000);
-                    System.out.println("Sleep 2");
-                    return m + 1;
-                })
-                .map(m -> {
-                    Thread.sleep(1000);
-                    System.out.println("Sleep 3");
+                    System.out.println("Sleep 9");
                     return m + 1;
                 })
                 .map(m -> String.valueOf(m));
         SafeOpt<Integer> val2 = scope.of("NaN").map(m -> {
             Thread.sleep(3300);
+            System.out.println("FAIL");
 //            throw new PassableException("No reason lol");
             return Integer.parseInt(m);
         });
 
         System.out.println("Waiting for finish");
-//         System.out.println(val1.throwIfErrorUnwrapping(CancelException.class));
+        try {
+            System.out.println(val1.throwAny());
+        } catch (Exception ex) {
+            System.out.println(ex.getClass());
+            ex.printStackTrace();
+        }
 
+//         System.out.println(val1.throwIfErrorUnwrapping(CancelException.class));
         Assertions.assertThatExceptionOfType(CancelException.class).isThrownBy(() -> {
             val1.throwAnyOrNull();
         });
+//        pool.shutdown();
     }
 
     @Test
     public void testAsyncReal() throws InterruptedException, ExecutionException {
+        System.out.println("Testing bench");;
+        long start = System.currentTimeMillis();
         ExecutorService pool = Executors.newFixedThreadPool(16);
         ExecutorService other = Executors.newFixedThreadPool(16);
         ArrayList<Future> futures = new ArrayList<>();
-        for (int i = 0; i < 100; i++) {
-            if (i % 10 >= 5) {
-                Future<?> submit = pool.submit(() -> {
-                    new SafeOptTest().testAsyncReal(pool, true);
-                });
-                futures.add(submit);
-            } else {
+        for (int i = 0; i < 5000; i++) {
+            if (i % 10 >= 1) {
                 Future<?> submit = other.submit(() -> {
                     new SafeOptTest().testAsyncReal(pool, true);
                 });
                 futures.add(submit);
+            } else {
+//                Future<?> submit = other.submit(() -> {
+                new SafeOptTest().testAsyncReal(pool, true);
+//                });
+//                futures.add(submit);
             }
 
         }
         for (Future f : futures) {
             f.get();
         }
+        System.out.println("Benched in:" + (System.currentTimeMillis() - start));
         pool.shutdown();
         other.shutdown();
         pool.awaitTermination(1, TimeUnit.DAYS);

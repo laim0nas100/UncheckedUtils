@@ -1,5 +1,7 @@
 package lt.lb.uncheckedutils.concurrent;
 
+import java.util.concurrent.Future;
+import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.SafeOptAsync;
 
 /**
@@ -12,8 +14,11 @@ public class SafeScope {
 
     public CancelPolicy cp;
 
-    public <T> SafeOptAsync<T> of(T value) {
-        return SafeOptAsync.ofNullable(submitter, value, cp);
+    public <T> SafeOpt<T> of(T value) {
+        if(value == null){
+            return SafeOpt.empty();
+        }
+        return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.of(value)), true,new SafeOptAsync.AsyncWork(cp));
     }
 
     public boolean isCancelled() {
