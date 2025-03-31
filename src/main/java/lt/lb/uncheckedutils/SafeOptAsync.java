@@ -1,6 +1,5 @@
 package lt.lb.uncheckedutils;
 
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
@@ -11,8 +10,6 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.CompletedFuture;
 import lt.lb.uncheckedutils.concurrent.Submitter;
@@ -34,7 +31,10 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         private AtomicBoolean running = new AtomicBoolean(false);
         private AtomicInteger queue = new AtomicInteger(0);
 
-        public AsyncWork(CancelPolicy cp) {
+        private final SafeOpt first;
+
+        public AsyncWork(SafeOpt first, CancelPolicy cp) {
+            this.first = first;
             this.cp = cp;
         }
 
@@ -78,15 +78,13 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                             next.run();
                             SafeOpt get = next.get();
                             if (cp != null && cp.cancelOnError && get.hasError()) {
-                                cp.cancel(get.rawException());
-                                if (cp.interruptableAwait) {
-                                    cp.interruptParkedThreads();
-                                }
+                                cp.cancel(first, get.rawException());
+
                             }
 
                         } catch (CancellationException | ExecutionException | InterruptedException neverHappens) {
 
-                        } 
+                        }
                     }
 
                 }
@@ -134,18 +132,16 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
     @Override
     public <O> SafeOpt<O> functor(Function<SafeOpt<T>, SafeOpt<O>> func) {
         Objects.requireNonNull(func, "Functor is null");
-        if (!isAsync) {
+        if (!isAsync || submitter.inside()) {
             return func.apply(collapse());
         }
+
         async.added.incrementAndGet();
         FutureTask<SafeOpt<O>> futureTask = new FutureTask<>(() -> func.apply(collapse()));
-        
+
         async.work.add((FutureTask) futureTask);
         if (async.queue.incrementAndGet() <= 2) {
-            submitter.submit(() -> {
-                async.run();
-                return null;
-            });
+            submitter.submit(async);
         } else {
             async.queue.decrementAndGet();
         }
@@ -158,11 +154,18 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
     protected final boolean isAsync;
     protected final AsyncWork async;
 
+    public SafeOptAsync(Future<SafeOpt<T>> base, Submitter submitter, boolean isAsync, CancelPolicy cp) {
+        this.submitter = Objects.requireNonNull(submitter);
+        this.base = Objects.requireNonNull(base);
+        this.isAsync = isAsync || submitter.inside();
+        this.async = new AsyncWork(this, cp);
+    }
+
     public SafeOptAsync(Submitter submitter, Future<SafeOpt<T>> base, boolean isAsync, AsyncWork asyncWork) {
         this.submitter = Objects.requireNonNull(submitter);
         this.base = Objects.requireNonNull(base);
-        this.isAsync = isAsync;
-        this.async = asyncWork == null ? new AsyncWork(null) : asyncWork;
+        this.isAsync = isAsync || submitter.inside();
+        this.async = asyncWork == null ? new AsyncWork(this, null) : asyncWork;
     }
 
     @Override
@@ -178,6 +181,15 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         } else {
             return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.error(rawException)), true, async); // only async when processing errors, otherwise same as empty
         }
+    }
+    
+     /**
+     * Not
+     * {@inheritDoc}
+     */
+    @Override
+    public SafeOpt<Throwable> getError() {
+        return functor(f -> f.getError());
     }
 
 }

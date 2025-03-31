@@ -2,18 +2,18 @@ package lt.lb.uncheckedutils.concurrent;
 
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
-import lt.lb.uncheckedutils.func.UncheckedSupplier;
+import lt.lb.uncheckedutils.Checked;
+import lt.lb.uncheckedutils.SafeOptAsync;
 
 /**
  *
  * @author laim0nas100
  */
-public interface Submitter {
+public abstract class Submitter {
 
-    <T> Future<T> submit(UncheckedSupplier<T> task);
+    public abstract boolean inside();
+
+    public abstract void submit(SafeOptAsync.AsyncWork task);
 
     public static Submitter ofExecutorService(final ExecutorService service) {
         Objects.requireNonNull(service);
@@ -21,17 +21,21 @@ public interface Submitter {
             ThreadLocal<Boolean> inside = ThreadLocal.withInitial(() -> false);
 
             @Override
-            public <T> Future<T> submit(final UncheckedSupplier<T> task) {
+            public boolean inside() {
+                return inside.get();
+            }
+
+            @Override
+            public void submit(final SafeOptAsync.AsyncWork task) {
+                Objects.requireNonNull(task);
                 if (inside.get()) {
                     //just run
-                    FutureTask<T> futureTask = new FutureTask<>(task);
-                    futureTask.run();
-                    return futureTask;
+                    task.run();
                 } else {
-                    return service.submit(() -> {
+                    service.submit(() -> {
                         try {
                             inside.set(true);
-                            return task.call();
+                            task.run();
                         } finally {
                             inside.set(false);
                         }
@@ -42,14 +46,18 @@ public interface Submitter {
         };
     }
 
-    public static final Submitter DEFAULT_POOL = Submitter.ofExecutorService(ForkJoinPool.commonPool());
+    public static final Submitter DEFAULT_POOL = ofExecutorService(Checked.createDefaultExecutorService());
 
     public static final Submitter IN_PLACE = new Submitter() {
         @Override
-        public <T> Future<T> submit(UncheckedSupplier<T> task) {
-            FutureTask<T> futureTask = new FutureTask<>(task);
-            futureTask.run();
-            return futureTask;
+        public void submit(SafeOptAsync.AsyncWork task) {
+            task.run();
+        }
+
+        @Override
+        public boolean inside() {
+            return true;
         }
     };
+
 }

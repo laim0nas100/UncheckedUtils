@@ -10,65 +10,93 @@ import lt.lb.uncheckedutils.SafeOpt;
  * @author laim0nas100
  */
 public class CancelPolicy {
-    
+
     private final AtomicReference<Throwable> state = new AtomicReference<>();
+    private final AtomicReference<SafeOpt> cancelledSource = new AtomicReference<>();
     private SafeOpt cancelOpt;
-    
+
     public final boolean cancelOnError;
     public final boolean interruptableAwait;
+    public final boolean passError;
     private final ThreadParkSpace parkedThreads;
 
-    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, int expectedThreads) {
-        this(cancelOnError,interruptableAwait, new ThreadParkSpace(expectedThreads));
+    public CancelPolicy() {
+        this(true, true,true);
     }
     
-    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, ThreadParkSpace parkedThreads) {
-        this.cancelOnError = cancelOnError;
-        this.interruptableAwait = interruptableAwait;
-        this.parkedThreads = parkedThreads;
+    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError) {
+        this(cancelOnError, interruptableAwait, passError,Runtime.getRuntime().availableProcessors());
     }
 
-    public CancelPolicy() {
-        this(false,false,null);
+    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait,boolean passError, int expectedThreads) {
+        this(cancelOnError, interruptableAwait,passError, new ThreadParkSpace(expectedThreads));
+    }
+
+    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError,ThreadParkSpace parkedThreads) {
+        this.cancelOnError = cancelOnError;
+        this.interruptableAwait = interruptableAwait;
+        this.passError = passError;
+        this.parkedThreads = parkedThreads;
     }
     
-    
-    public void cancel(Throwable error) {
-        if(error == null){
+    public void cancel(Throwable error){
+        cancel(null, error);
+    }
+
+    public void cancel(SafeOpt source,Throwable error) {
+        if (error == null) {
             error = new PassableException("Cancelled explicitly");
         }
-        if(state.compareAndSet(null, error)){
-            cancelOpt = SafeOpt.error(new CancelException(error));
+        if(!passError){
+            error = new PassableException("Cancelled due to error in dependency");
+        }
+        if (state.compareAndSet(null, error)) {
+            
+            if(source !=null){
+                cancelledSource.compareAndSet(null, source);
+            }
+            cancelOpt = SafeOpt.error(new CancelException(cancelledSource.get(),error));
+            if (interruptableAwait) {
+                interruptParkedThreads();
+            }
         }
     }
-    
-    public boolean cancelled(){
+
+    public boolean cancelled() {
         return state.get() != null;
     }
-    
-    public SafeOpt getError(){
+
+    public SafeOpt getError() {
         return cancelOpt;
     }
     
-    public int parkIfSupported(){
-        if(parkedThreads == null){
+    public SafeOpt getErrorSource(){
+        return cancelledSource.get();
+    }
+
+    public int parkIfSupported() {
+        if (parkedThreads == null) {
             return -1;
         }
         return parkedThreads.park();
     }
-    
-    public boolean unparkIfSupported(){
-        if(parkedThreads == null){
+
+    public boolean unparkIfSupported() {
+        if (parkedThreads == null) {
             return false;
         }
         return parkedThreads.unpark();
     }
-    
-    public void interruptParkedThreads(){
-        for(Thread thread:parkedThreads.getThreads()){
-            thread.interrupt();
+
+    public void interruptParkedThreads() {
+        if (parkedThreads == null) {
+            return;
+        }
+        for (Thread thread : parkedThreads.getThreads()) {
+            if (thread.isAlive()) {
+                thread.interrupt();
+            }
         }
     }
-    
-    
+
 }

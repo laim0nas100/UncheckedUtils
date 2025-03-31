@@ -172,7 +172,7 @@ public class SafeOptTest {
                 })
                 .flatMap(m -> {
                     states1.add("flatMap");
-                    return SafeOpt.of(m);
+                    return SafeOpt.ofAsync(m).filter(f-> true);
                 })
                 .flatMapOpt(m -> {
                     states1.add("flatMapOpt");
@@ -234,7 +234,7 @@ public class SafeOptTest {
     public void testAsyncReal(ExecutorService service, boolean inside) {
         Collection<String> states1 = new LinkedBlockingDeque<>();
         Collection<String> states2 = new LinkedBlockingDeque<>();
-        SafeOpt<Integer> lazy = SafeOpt.ofAsync(service, "10")
+        SafeOpt<Integer> lazy = SafeOpt.ofAsync("10")
                 .map(Integer::parseInt)
                 .filter(f -> {
                     states1.add("filter");
@@ -246,7 +246,10 @@ public class SafeOptTest {
                 })
                 .flatMap(m -> {
                     states1.add("flatMap");
-                    return SafeOpt.of(m);
+                    return SafeOpt.ofAsync(m).filter(f-> true).map(i->{
+                        Thread.sleep(200);
+                        return i;
+                    });
                 })
                 .flatMapOpt(m -> {
                     states1.add("flatMapOpt");
@@ -278,7 +281,7 @@ public class SafeOptTest {
                 });
 
         Collection<String> stateError = new LinkedBlockingDeque<>();
-        SafeOpt<Integer> peekError = SafeOpt.ofAsync(service, "NaN").map(Integer::parseInt)
+        SafeOpt<Integer> peekError = SafeOpt.ofAsync("NaN").map(Integer::parseInt)
                 .filter(f -> {
                     stateError.add("filter"); // must not include
                     return true;
@@ -310,12 +313,13 @@ public class SafeOptTest {
     }
 
     public static void benchTest() throws Exception {
-        ExecutorService pool = Executors.newFixedThreadPool(8);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+//        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
         ExecutorService other = Executors.newFixedThreadPool(8);
         List<Future> futures = new ArrayList<>();
-        for (int i = 0; i < 10; i++) {
-            if (i % 10 > 3) {
-                Future e = pool.submit(() -> {
+        for (int i = 0; i < 50; i++) {
+            if (i % 10 > -1) {
+                Future e = other.submit(() -> {
                     new SafeOptTest().testAsyncReal(pool, true);
                 });
                 futures.add(e);
@@ -331,8 +335,8 @@ public class SafeOptTest {
         for (Future f : futures) {
             f.get();
         }
-        pool.shutdown();
-        pool.awaitTermination(1, TimeUnit.DAYS);
+//        pool.shutdown();
+//        pool.awaitTermination(1, TimeUnit.DAYS);
         other.shutdown();
         other.awaitTermination(1, TimeUnit.DAYS);
     }
@@ -340,15 +344,15 @@ public class SafeOptTest {
     public static void main(String[] args) throws Exception {
 
 //        new SafeOptTest().testAsyncReal();
-        new SafeOptTest().testCancel();
-
-        ThreadFactory factory = Thread.ofVirtual().factory();
+        benchTest();
+        
+//        ThreadFactory factory = Thread.ofVirtual().factory();
     }
 
     @Test
     public void testCancel() throws Exception {
         SafeScope scope = new SafeScope();
-        scope.cp = new CancelPolicy(true, true, 16);
+        scope.cp = new CancelPolicy(true, true, false);
 //        ExecutorService pool = Executors.newFixedThreadPool(12);
 //        scope.submitter = Submitter.ofExecutorService(pool);
 
@@ -364,6 +368,9 @@ public class SafeOptTest {
                     Thread.sleep(1000);
                     System.out.println("Sleep 2");
                     return m + 1;
+                })
+                .peek(val->{
+                    System.out.println("Async consumed value:"+val);
                 })
                 .map(m -> {
                     Thread.sleep(1000);
@@ -403,16 +410,27 @@ public class SafeOptTest {
                 .map(m -> String.valueOf(m));
         SafeOpt<Integer> val2 = scope.of("NaN").map(m -> {
             Thread.sleep(3300);
-            System.out.println("FAIL");
-//            throw new PassableException("No reason lol");
+            System.out.println("FAIL NOW");
+            if(true){
+                throw new RuntimeException("Explicit failure");
+            }
             return Integer.parseInt(m);
+        });
+        
+         SafeOpt<Integer> val3 = scope.of("NaN").map(m -> {
+             System.out.println("Try fail later");
+            Thread.sleep(5500);
+            System.out.println("Should not FAIL here");
+            throw new RuntimeException("We failed again...");
         });
 
         System.out.println("Waiting for finish");
         try {
             System.out.println(val1.throwAny());
+//            System.out.println(val2.throwAny());
+//            System.out.println(val3.throwAny());
         } catch (Exception ex) {
-            System.out.println(ex.getClass());
+            System.out.println(ex);
             ex.printStackTrace();
         }
 
@@ -420,18 +438,21 @@ public class SafeOptTest {
         Assertions.assertThatExceptionOfType(CancelException.class).isThrownBy(() -> {
             val1.throwAnyOrNull();
         });
+        Assertions.assertThatExceptionOfType(CancelException.class).isThrownBy(() -> {
+            val3.throwAnyOrNull();
+        });
 //        pool.shutdown();
     }
 
     @Test
     public void testAsyncReal() throws InterruptedException, ExecutionException {
-        System.out.println("Testing bench");;
+        System.out.println("Testing bench");
         long start = System.currentTimeMillis();
         ExecutorService pool = Executors.newFixedThreadPool(16);
         ExecutorService other = Executors.newFixedThreadPool(16);
         ArrayList<Future> futures = new ArrayList<>();
-        for (int i = 0; i < 5000; i++) {
-            if (i % 10 >= 1) {
+        for (int i = 0; i < 500; i++) {
+            if (i % 10 >= 0) {
                 Future<?> submit = other.submit(() -> {
                     new SafeOptTest().testAsyncReal(pool, true);
                 });

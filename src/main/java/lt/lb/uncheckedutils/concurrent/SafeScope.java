@@ -1,6 +1,5 @@
 package lt.lb.uncheckedutils.concurrent;
 
-import java.util.concurrent.Future;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.SafeOptAsync;
 
@@ -10,19 +9,34 @@ import lt.lb.uncheckedutils.SafeOptAsync;
  */
 public class SafeScope {
 
-    public Submitter submitter;
+    public Submitter submitter = Submitter.DEFAULT_POOL;
 
     public CancelPolicy cp;
 
-    public <T> SafeOpt<T> of(T value) {
-        if(value == null){
-            return SafeOpt.empty();
-        }
-        return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.of(value)), true,new SafeOptAsync.AsyncWork(cp));
+    public <T> ScopedSafeOptAsync<T> of(T value) {
+        return new ScopedSafeOptAsync<>(this, value);
     }
 
     public boolean isCancelled() {
         return cp == null ? false : cp.cancelled();
+    }
+
+    public void cancel(Throwable err) {
+        if (cp == null) {
+            return;
+        }
+        cp.cancel(err);
+    }
+
+    public static class ScopedSafeOptAsync<T> extends SafeOptAsync<T> {
+
+        public final SafeScope scope;
+
+        public ScopedSafeOptAsync(SafeScope scope, T base) {
+            super(new CompletedFuture<>(SafeOpt.ofNullable(base)), scope.submitter, true, scope.cp);
+            this.scope = scope;
+        }
+
     }
 
 }

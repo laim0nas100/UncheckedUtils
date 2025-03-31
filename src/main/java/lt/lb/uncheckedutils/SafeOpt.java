@@ -4,7 +4,6 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.function.BiFunction;
@@ -220,22 +219,6 @@ public interface SafeOpt<T> {
         return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.of(val)),true,null);
     }
 
-    /**
-     * Returns async {@code SafeOpt} based on the specified value.Every possible
-     * operation is evaluated in given executor, similarly to
-     * {@link CompletableFuture}.
-     *
-     * @param <T>
-     * @param service
-     * @param val
-     * @return
-     */
-    public static <T> SafeOpt<T> ofAsync(ExecutorService service, T val) {
-        if(val == null){
-            return SafeOpt.empty();
-        }
-        return new SafeOptAsync<>(Submitter.ofExecutorService(service), new CompletedFuture<>(SafeOpt.of(val)),true,null);
-    }
 
     /**
      * Returns async {@code SafeOpt} based on the specified value.Every possible

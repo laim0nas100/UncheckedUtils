@@ -1,6 +1,10 @@
 package lt.lb.uncheckedutils;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import lt.lb.uncheckedutils.func.UncheckedRunnable;
@@ -140,5 +144,21 @@ public class Checked {
      */
     public static <T> SafeOpt<T> checkedCall(Supplier<T> call) {
         return SafeOpt.ofGet(call);
+    }
+    
+     public static ExecutorService createDefaultExecutorService() {
+        try {
+            Method declaredMethod = Executors.class.getDeclaredMethod("newVirtualThreadPerTaskExecutor");
+            if (declaredMethod != null) {
+                Object invoke = declaredMethod.invoke(null);
+                if (invoke instanceof ExecutorService) {
+                    return (ExecutorService) invoke;
+                }
+            }
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException ex) {
+
+        }
+        return Executors.newWorkStealingPool();
+
     }
 }
