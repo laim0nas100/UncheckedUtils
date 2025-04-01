@@ -1,7 +1,6 @@
 package test;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
@@ -17,6 +16,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import lt.lb.uncheckedutils.CancelException;
 import lt.lb.uncheckedutils.Checked;
@@ -467,6 +467,114 @@ public class SafeOptTest {
             System.out.println(ex);
             ex.printStackTrace();
         }
+
+//         System.out.println(val1.throwIfErrorUnwrapping(CancelException.class));
+        Assertions
+                .assertThatExceptionOfType(CancelException.class
+                ).isThrownBy(() -> {
+                    val1.throwAnyOrNull();
+                }
+                );
+        Assertions
+                .assertThatExceptionOfType(CancelException.class
+                ).isThrownBy(() -> {
+                    val3.throwAnyOrNull();
+                }
+                );
+//        pool.shutdown();
+    }
+    
+     @Test
+    public void testCancelNested() throws Exception {
+        SafeScope scope = new SafeScope(new CancelPolicy(true, true, true));
+//        ExecutorService pool = Executors.newFixedThreadPool(12);
+//        scope.submitter = Submitter.ofExecutorService(pool);
+
+        AtomicInteger nested = new AtomicInteger(0);
+        
+        SafeOpt<String> val1 = scope.of(10)
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 1");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 2");
+                    return m + 1;
+                })
+                .peek(val -> {
+                    System.out.println("Async consumed value:" + val);
+                })
+                .flatMap(m->{
+                    return scope.ofUnpinnable(m).peek(v->{
+                        nested.incrementAndGet();
+                        Thread.sleep(2000);//should cancel async also
+                        nested.incrementAndGet();
+                    });
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 3");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 4");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 5");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 6");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 7");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 8");
+                    return m + 1;
+                })
+                .map(m -> {
+                    Thread.sleep(1000);
+                    System.out.println("Sleep 9");
+                    return m + 1;
+                })
+                .map(m -> String.valueOf(m));
+        SafeOpt<Integer> val2 = scope.of("NaN").map(m -> {
+            Thread.sleep(3300);
+            System.out.println("FAIL NOW");
+            if (true) {
+                throw new RuntimeException("Explicit failure");
+            }
+            return Integer.parseInt(m);
+        });
+
+        SafeOpt<Integer> val3 = scope.of("NaN").map(m -> {
+            System.out.println("Try fail later");
+            Thread.sleep(5500);
+            System.out.println("Should not FAIL here");
+            throw new RuntimeException("We failed again...");
+        });
+
+        System.out.println("Waiting for finish");
+        try {
+//            System.out.println(val1.throwAnyOrNull());
+            System.out.println(val2.throwAnyOrNull());
+//            System.out.println(val3.throwAnyOrNull());
+        } catch (Exception ex) {
+            System.out.println(ex);
+            ex.printStackTrace();
+        }
+        Assertions.assertThat(nested.get()).isEqualTo(1);
 
 //         System.out.println(val1.throwIfErrorUnwrapping(CancelException.class));
         Assertions
