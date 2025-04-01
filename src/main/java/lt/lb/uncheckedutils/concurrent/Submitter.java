@@ -60,4 +60,31 @@ public abstract class Submitter {
         }
     };
 
+    public static final Submitter NEW_THREAD = new Submitter() {
+        ThreadLocal<Boolean> inside = ThreadLocal.withInitial(() -> false);
+
+        @Override
+        public void submit(SafeOptAsync.AsyncWork task) {
+            if (inside.get()) {
+                task.run();
+            } else {
+
+                new Thread(() -> {
+                    try {
+                        inside.set(true);
+                        task.run();
+                    } finally {
+                        inside.set(false);
+                    }
+
+                }).start();
+            }
+        }
+
+        @Override
+        public boolean inside() {
+            return inside.get();
+        }
+    };
+
 }

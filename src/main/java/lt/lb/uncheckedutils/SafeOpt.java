@@ -12,7 +12,6 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
-import lt.lb.uncheckedutils.concurrent.CompletedFuture;
 import lt.lb.uncheckedutils.concurrent.Submitter;
 import lt.lb.uncheckedutils.func.UncheckedBiFunction;
 import lt.lb.uncheckedutils.func.UncheckedConsumer;
@@ -226,6 +225,10 @@ public interface SafeOpt<T> {
      */
     public static <T> SafeOpt<T> ofAsync(T val) {
         return new SafeOptAsync<>(Submitter.DEFAULT_POOL, ofNullable(val));
+    }
+    
+    public static <T> SafeOpt<T> ofAsyncUnpinnable(T val) {
+        return new SafeOptAsyncUnpinnable<>(ofNullable(val));
     }
 
     /**

@@ -10,6 +10,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.SafeOptAsync;
+import lt.lb.uncheckedutils.SafeOptAsyncUnpinnable;
 
 /**
  *
@@ -57,9 +58,12 @@ public class SafeScope {
         this(Submitter.DEFAULT_POOL, null, -1);
     }
 
-    public <T> ScopedSafeOptAsync<T> of(T value) {
-        Objects.requireNonNull(value, "Initial value must be not null");
-        return new ScopedSafeOptAsync<>(this, value);
+    public <T> SafeOptAsync<T> of(T value) {
+        return new SafeOptAsync<>(submitter, SafeOpt.ofNullable(value), cp);
+    }
+
+    public <T> SafeOptAsync<T> ofUnpinnable(T value) {
+        return new SafeOptAsyncUnpinnable<>(SafeOpt.ofNullable(value), cp);
     }
 
     public boolean isCancelled() {
@@ -141,16 +145,4 @@ public class SafeScope {
 
         };
     }
-
-    public static class ScopedSafeOptAsync<T> extends SafeOptAsync<T> {
-
-        public final SafeScope scope;
-
-        public ScopedSafeOptAsync(SafeScope scope, T base) {
-            super(scope.submitter, SafeOpt.ofNullable(base), scope.cp);
-            this.scope = scope;
-        }
-
-    }
-
 }

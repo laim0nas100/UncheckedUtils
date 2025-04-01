@@ -1,5 +1,13 @@
 package test;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -7,11 +15,8 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lt.lb.uncheckedutils.CancelException;
 import lt.lb.uncheckedutils.Checked;
@@ -20,7 +25,6 @@ import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.SafeScope;
-import lt.lb.uncheckedutils.concurrent.Submitter;
 import org.assertj.core.api.Assertions;
 import static org.assertj.core.api.Assertions.assertThat;
 import org.assertj.core.api.ThrowableTypeAssert;
@@ -338,32 +342,6 @@ public class SafeOptTest {
         }
     }
 
-    public static void main(String[] args) throws Exception {
-
-//        new SafeOptTest().testAsyncReal();
-//        benchTest();
-//        ExecutorService def = Checked.createDefaultExecutorService();
-//        ArrayList<Future> futures = new ArrayList<>();
-//        for (int i = 0; i < 50; i++) {
-//            Future<?> submit = def.submit(() -> {
-//                new SafeOptTest().testAsyncReal(true);
-//            });
-//            futures.add(submit);
-//
-//        }
-//        for (Future f : futures) {
-//            f.get();
-//        }
-        for (int i = 0; i < 50; i++) {
-            System.out.println("TeestAsyncReal:"+i);
-                new SafeOptTest().testAsyncReal(true);
-
-        }
-
-        
-//        ThreadFactory factory = Thread.ofVirtual().factory();
-    }
-
     @Test
     public void testCancelOnFinish() throws Exception {
         int completion = 5;
@@ -491,12 +469,18 @@ public class SafeOptTest {
         }
 
 //         System.out.println(val1.throwIfErrorUnwrapping(CancelException.class));
-        Assertions.assertThatExceptionOfType(CancelException.class).isThrownBy(() -> {
-            val1.throwAnyOrNull();
-        });
-        Assertions.assertThatExceptionOfType(CancelException.class).isThrownBy(() -> {
-            val3.throwAnyOrNull();
-        });
+        Assertions
+                .assertThatExceptionOfType(CancelException.class
+                ).isThrownBy(() -> {
+                    val1.throwAnyOrNull();
+                }
+                );
+        Assertions
+                .assertThatExceptionOfType(CancelException.class
+                ).isThrownBy(() -> {
+                    val3.throwAnyOrNull();
+                }
+                );
 //        pool.shutdown();
     }
 
@@ -525,5 +509,110 @@ public class SafeOptTest {
         }
         System.out.println("Benched in:" + (System.currentTimeMillis() - start));
 
+    }
+
+    public static void pinnedSleep(long sleep) throws InterruptedException {
+
+        Object ob = new Object();
+        synchronized (ob) {
+            Thread.sleep(sleep);
+        }
+    }
+
+    public static void cmdSleep(int seconds) throws IOException, InterruptedException {
+        Process start = new ProcessBuilder("ping", "-n", String.valueOf(seconds), "127.0.0.1").start();
+        BufferedReader is = new BufferedReader(new InputStreamReader(start.getInputStream()));
+        String read;
+        while ((read = is.readLine()) != null) {
+//            System.out.println(read);
+        }
+
+    }
+
+    /**
+     * Some long read function to enable pinning
+     *
+     * @throws IOException
+     */
+    public static void read() throws IOException {
+
+        String dir = "C:\\files\\YT\\spec";
+        List<Path> list = Files.list(Path.of(dir)).toList();
+        for (Path file : list) {
+            SeekableByteChannel newByteChannel = Files.newByteChannel(file);
+            boolean r = true;
+            int capacity = 100000;
+            while (r) {
+                ByteBuffer allocate = ByteBuffer.allocate(capacity);
+                int read = newByteChannel.read(allocate);
+                r = read == capacity;
+
+            }
+        }
+
+    }
+
+    public static void main(String[] args) throws Exception {
+
+//        new SafeOptTest().testAsyncReal();
+//        benchTest();
+        if (true) {
+            SafeOpt<Integer> peek = SafeOpt.ofAsyncUnpinnable(0).peek(m -> {
+                Thread.sleep(1000);
+                System.out.println("Thread1");
+            });
+            SafeOpt.ofAsyncUnpinnable(0).peek(m -> {
+                Thread.sleep(3000);
+                System.out.println("Thread2");
+            });
+            peek.get();
+            peek.peek(m -> {
+                Thread.sleep(1000);
+                System.out.println("Thread1 continuation");
+            });
+            System.out.println("Out");
+//            new Thread(() -> {
+//                Checked.checkedRun(()->{
+//                   Thread.sleep(5000);
+//                });
+//            }).start();
+//            read();
+            return;
+        }
+        ExecutorService def = Checked.createDefaultExecutorService();
+        ArrayList<Future> futures = new ArrayList<>();
+
+        for (int i = 0; i < 20000; i++) {
+            final int in = i;
+            Future<?> submit = def.submit(() -> {
+                SafeOpt.ofAsync(in).flatMap(m -> {
+                    if (in % 1000 == 0) {
+                        return SafeOpt.ofAsyncUnpinnable(m).map(n -> {
+                            read();
+                            return n;
+                        });
+
+                    }
+                    return SafeOpt.ofAsync(m).peek(v -> {
+                        Thread.sleep(20000);
+                    });
+                }).peek(m -> {
+
+                    System.out.println(in);
+                }).get();
+            });
+            futures.add(submit);
+
+        }
+        for (Future f : futures) {
+            f.get();
+        }
+//        for (int i = 0; i < 50; i++) {
+//            System.out.println("TeestAsyncReal:"+i);
+//                new SafeOptTest().testAsyncReal(true);
+//
+//        }
+
+//        ThreadFactory factory = Thread.ofVirtual().factory();
     }
 }

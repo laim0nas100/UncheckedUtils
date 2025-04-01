@@ -9,10 +9,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.CompletedFuture;
 import lt.lb.uncheckedutils.concurrent.Submitter;
@@ -27,14 +26,14 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
     public static class AsyncWork implements Runnable {
 
-        private final CancelPolicy cp;
-        private ConcurrentLinkedDeque<FutureTask<SafeOpt>> work = new ConcurrentLinkedDeque<>();
-        private AtomicInteger added = new AtomicInteger(0);
+        protected final CancelPolicy cp;
+        protected ConcurrentLinkedDeque<FutureTask<SafeOpt>> work = new ConcurrentLinkedDeque<>();
+        protected AtomicInteger added = new AtomicInteger(0);
 
-        private AtomicBoolean running = new AtomicBoolean(false);
-        private AtomicInteger queue = new AtomicInteger(0);
+        protected AtomicReference<Thread> workThread = new AtomicReference<>(null);
+        protected AtomicInteger queue = new AtomicInteger(0);
 
-        private final SafeOpt first;
+        protected final SafeOpt first;
 
         public AsyncWork(SafeOpt first, CancelPolicy cp) {
             this.first = first;
@@ -44,20 +43,17 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         @Override
         public void run() {
             queue.decrementAndGet();
-
-            if (running.compareAndSet(false, true)) {
+            if (workThread.compareAndSet(null, Thread.currentThread())) {
                 try {
                     logic();
-
                 } finally {
-                    running.set(false);
+                    workThread.set(null);
                 }
-
             }
 
         }
 
-        private void logic() {
+        protected void logic() {
             int park = -1;
             if (cp != null) { // can be interrupted if using SafeScope by other related AsyncWorkers
                 park = cp.parkIfSupported();
@@ -66,7 +62,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             while (added.get() > 0) {
                 Iterator<FutureTask<SafeOpt>> iterator = work.iterator();
                 if (!iterator.hasNext()) {
-//                    LockSupport.parkNanos(1);
+//                    await();
                     continue;//spin wait, because added is not zero
                 }
                 FutureTask<SafeOpt> next = iterator.next();
@@ -95,11 +91,18 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
                 }
 
-                
             }
             if (park >= 0) {
                 cp.unparkIfSupported();
             }
+        }
+
+        public void wakeUp() {
+            LockSupport.unpark(workThread.get());
+        }
+
+        protected void await() {
+            LockSupport.parkNanos(1000_000_000);//spin wait 1000 milliseconds
         }
     }
 
@@ -150,6 +153,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         FutureTask<SafeOpt<O>> futureTask = new FutureTask<>(() -> func.apply(collapse()));
 
         async.work.add((FutureTask) futureTask);
+//        async.wakeUp();
         if (async.queue.incrementAndGet() <= 2) {
             submitter.submit(async);
         } else {
@@ -170,7 +174,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         this.complete = Objects.requireNonNull(complete);
         this.base = (Future) EMPTY;
         this.isAsync = true;
-        this.async = new AsyncWork(this, null);
+        this.async = createWork(null);
     }
 
     public SafeOptAsync(Submitter submitter, SafeOpt<T> complete, CancelPolicy cp) {
@@ -178,10 +182,10 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         this.complete = Objects.requireNonNull(complete);
         this.base = (Future) EMPTY;
         this.isAsync = true;
-        this.async = new AsyncWork(this, cp);
+        this.async = createWork(cp);
     }
 
-    public SafeOptAsync(Submitter submitter, SafeOpt<T> complete, AsyncWork asyncWork) {
+    protected SafeOptAsync(Submitter submitter, SafeOpt<T> complete, AsyncWork asyncWork) {
         this.submitter = Objects.requireNonNull(submitter);
         this.complete = Objects.requireNonNull(complete);
         this.base = (Future) EMPTY;
@@ -189,18 +193,15 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         this.async = Objects.requireNonNull(asyncWork);
     }
 
-    public SafeOptAsync(Submitter submitter, Future<SafeOpt<T>> base, boolean isAsync, CancelPolicy cp) {
+    protected SafeOptAsync(Submitter submitter, Future<SafeOpt<T>> base, boolean isAsync, AsyncWork asyncWork) {
         this.submitter = Objects.requireNonNull(submitter);
         this.base = Objects.requireNonNull(base);
         this.isAsync = isAsync || submitter.inside();
-        this.async = new AsyncWork(this, cp);
+        this.async = Objects.requireNonNull(asyncWork);
     }
 
-    public SafeOptAsync(Submitter submitter, Future<SafeOpt<T>> base, boolean isAsync, AsyncWork asyncWork) {
-        this.submitter = Objects.requireNonNull(submitter);
-        this.base = Objects.requireNonNull(base);
-        this.isAsync = isAsync || submitter.inside();
-        this.async = asyncWork == null ? new AsyncWork(this, null) : asyncWork;
+    protected AsyncWork createWork(CancelPolicy cp) {
+        return new AsyncWork(this, cp);
     }
 
     @Override
