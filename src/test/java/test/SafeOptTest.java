@@ -12,7 +12,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import lt.lb.uncheckedutils.CancelException;
+import lt.lb.uncheckedutils.Checked;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
@@ -172,7 +174,7 @@ public class SafeOptTest {
                 })
                 .flatMap(m -> {
                     states1.add("flatMap");
-                    return SafeOpt.ofAsync(m).filter(f-> true);
+                    return SafeOpt.ofAsync(m).filter(f -> true);
                 })
                 .flatMapOpt(m -> {
                     states1.add("flatMapOpt");
@@ -231,7 +233,7 @@ public class SafeOptTest {
 
     }
 
-    public void testAsyncReal(ExecutorService service, boolean inside) {
+    public void testAsyncReal(boolean inside) {
         Collection<String> states1 = new LinkedBlockingDeque<>();
         Collection<String> states2 = new LinkedBlockingDeque<>();
         SafeOpt<Integer> lazy = SafeOpt.ofAsync("10")
@@ -246,7 +248,7 @@ public class SafeOptTest {
                 })
                 .flatMap(m -> {
                     states1.add("flatMap");
-                    return SafeOpt.ofAsync(m).filter(f-> true).map(i->{
+                    return SafeOpt.ofAsync(m).filter(f -> true).map(i -> {
                         Thread.sleep(200);
                         return i;
                     });
@@ -312,20 +314,19 @@ public class SafeOptTest {
 
     }
 
-    public static void benchTest() throws Exception {
-        ExecutorService pool = Executors.newFixedThreadPool(2);
+    public static void benchTestas() throws Exception {
 //        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
-        ExecutorService other = Executors.newFixedThreadPool(8);
+        ExecutorService other = Checked.createDefaultExecutorService();
         List<Future> futures = new ArrayList<>();
         for (int i = 0; i < 50; i++) {
             if (i % 10 > -1) {
                 Future e = other.submit(() -> {
-                    new SafeOptTest().testAsyncReal(pool, true);
+                    new SafeOptTest().testAsyncReal(true);
                 });
                 futures.add(e);
             } else {
 //                Future<?> submit = other.submit(() -> {
-                new SafeOptTest().testAsyncReal(pool, false);
+                new SafeOptTest().testAsyncReal(false);
 //                });
 //                futures.add(submit);
 
@@ -335,28 +336,65 @@ public class SafeOptTest {
         for (Future f : futures) {
             f.get();
         }
-//        pool.shutdown();
-//        pool.awaitTermination(1, TimeUnit.DAYS);
-        other.shutdown();
-        other.awaitTermination(1, TimeUnit.DAYS);
     }
 
     public static void main(String[] args) throws Exception {
 
 //        new SafeOptTest().testAsyncReal();
-        benchTest();
-        
+//        benchTest();
+
 //        ThreadFactory factory = Thread.ofVirtual().factory();
     }
 
     @Test
-    public void testCancel() throws Exception {
-        SafeScope scope = new SafeScope();
-        scope.cp = new CancelPolicy(true, true, false);
+    public void testCancelOnFinish() throws Exception {
+        int completion = 5;
+        SafeScope scope = new SafeScope(new CancelPolicy(true, true, true), completion);
 //        ExecutorService pool = Executors.newFixedThreadPool(12);
 //        scope.submitter = Submitter.ofExecutorService(pool);
 
-        scope.submitter = Submitter.DEFAULT_POOL;
+        List<SafeOpt<Integer>> list = new ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            SafeOpt<Integer> chain = scope.of(i)
+                    .map(f -> {
+                        Thread.sleep(f * 1000);
+                        return f;
+                    })
+                    .chain(scope.completionListener());
+            list.add(chain);
+        }
+
+        System.out.println("Waiting for finish:" + list.size());
+
+        try {
+//            for (int i = 0; i < list.size(); i++) {
+//                System.out.println("Awaited:" + list.get(i).throwAnyGet());
+//            }
+            scope.awaitCompletion();
+        } catch (Exception ex) {
+            System.out.println(ex.getMessage());
+            throw ex;
+        }
+
+        System.out.println("Completed:" + scope.getCompleted().size());
+        System.out.println(scope.getCompleted());
+
+        Assertions.assertThat(scope.getCompleted().size()).isEqualTo(completion);
+        List<Integer> collect = scope.getCompleted().stream().map(m -> (int) m.get()).collect(Collectors.toList());
+        List<Integer> expected = new ArrayList<>();
+        for (int i = 0; i < completion; i++) {
+            expected.add(i);
+        }
+        Assertions.assertThat(scope.getCompleted().size()).isEqualTo(completion);
+        Assertions.assertThat(collect).containsSequence(expected);
+
+    }
+
+    @Test
+    public void testCancel() throws Exception {
+        SafeScope scope = new SafeScope(new CancelPolicy(true, true, true));
+//        ExecutorService pool = Executors.newFixedThreadPool(12);
+//        scope.submitter = Submitter.ofExecutorService(pool);
 
         SafeOpt<String> val1 = scope.of(10)
                 .map(m -> {
@@ -369,8 +407,8 @@ public class SafeOptTest {
                     System.out.println("Sleep 2");
                     return m + 1;
                 })
-                .peek(val->{
-                    System.out.println("Async consumed value:"+val);
+                .peek(val -> {
+                    System.out.println("Async consumed value:" + val);
                 })
                 .map(m -> {
                     Thread.sleep(1000);
@@ -411,14 +449,14 @@ public class SafeOptTest {
         SafeOpt<Integer> val2 = scope.of("NaN").map(m -> {
             Thread.sleep(3300);
             System.out.println("FAIL NOW");
-            if(true){
+            if (true) {
                 throw new RuntimeException("Explicit failure");
             }
             return Integer.parseInt(m);
         });
-        
-         SafeOpt<Integer> val3 = scope.of("NaN").map(m -> {
-             System.out.println("Try fail later");
+
+        SafeOpt<Integer> val3 = scope.of("NaN").map(m -> {
+            System.out.println("Try fail later");
             Thread.sleep(5500);
             System.out.println("Should not FAIL here");
             throw new RuntimeException("We failed again...");
@@ -426,9 +464,9 @@ public class SafeOptTest {
 
         System.out.println("Waiting for finish");
         try {
-            System.out.println(val1.throwAny());
-//            System.out.println(val2.throwAny());
-//            System.out.println(val3.throwAny());
+//            System.out.println(val1.throwAnyOrNull());
+            System.out.println(val2.throwAnyOrNull());
+//            System.out.println(val3.throwAnyOrNull());
         } catch (Exception ex) {
             System.out.println(ex);
             ex.printStackTrace();
@@ -445,21 +483,20 @@ public class SafeOptTest {
     }
 
     @Test
-    public void testAsyncReal() throws InterruptedException, ExecutionException {
+    public void testAsyncBench() throws InterruptedException, ExecutionException {
         System.out.println("Testing bench");
         long start = System.currentTimeMillis();
-        ExecutorService pool = Executors.newFixedThreadPool(16);
-        ExecutorService other = Executors.newFixedThreadPool(16);
+        ExecutorService other = Checked.createDefaultExecutorService();
         ArrayList<Future> futures = new ArrayList<>();
-        for (int i = 0; i < 500; i++) {
-            if (i % 10 >= 0) {
+        for (int i = 0; i < 50; i++) {
+            if (i % 10 >= 1) {
                 Future<?> submit = other.submit(() -> {
-                    new SafeOptTest().testAsyncReal(pool, true);
+                    new SafeOptTest().testAsyncReal( true);
                 });
                 futures.add(submit);
             } else {
 //                Future<?> submit = other.submit(() -> {
-                new SafeOptTest().testAsyncReal(pool, true);
+                new SafeOptTest().testAsyncReal( true);
 //                });
 //                futures.add(submit);
             }
@@ -469,10 +506,6 @@ public class SafeOptTest {
             f.get();
         }
         System.out.println("Benched in:" + (System.currentTimeMillis() - start));
-        pool.shutdown();
-        other.shutdown();
-        pool.awaitTermination(1, TimeUnit.DAYS);
-        other.awaitTermination(1, TimeUnit.DAYS);
 
     }
 }

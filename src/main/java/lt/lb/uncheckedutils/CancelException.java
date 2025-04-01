@@ -13,13 +13,32 @@ public class CancelException extends StacklessRuntimeException {
 
     protected final Object source;
 
-    public CancelException(Throwable cause) {
-        this(null, cause);
+    public CancelException(Object source, String msg) {
+        this(msg, source, null);
     }
-    
+
     public CancelException(Object source, Throwable e) {
-        super("Cancelled", e == null ? NO_REASON : e);
+        this(null, source, e);
+    }
+
+    public CancelException(String msg, Object source, Throwable e) {
+        super(resolveMsg(msg, e), e == null ? NO_REASON : e);
         this.source = source;
+    }
+
+    private static String resolveMsg(String msg, Throwable cause) {
+        if (msg == null) {
+            if (cause == null) {
+                return "Cancelled with no specific cause";
+            }
+            return "Cancelled by exception:" + cause.getClass().getSimpleName() + " " + cause.getMessage();
+        }
+
+        if (cause != null) {
+            return msg + " due to " + cause.getMessage();
+        }
+        return msg;
+
     }
 
     @Override

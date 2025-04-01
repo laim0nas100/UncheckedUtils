@@ -100,33 +100,38 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
     @Override
     public SafeOpt<T> collapse() {
+        if (complete != null) {
+            return complete;
+        }
         int park = -1;
         if (async.cp != null) {
             if (async.cp.cancelled()) {
-                return async.cp.getError();
+                return complete = async.cp.getError();
             }
             park = async.cp.parkIfSupported();
         }
         try {
-            return base.get();
+            complete = base.get();
+
         } catch (InterruptedException | CancellationException cancelled) {
             if (async.cp != null) {
-                return async.cp.getError();
+                complete = async.cp.getError();
             } else {
-                return SafeOpt.error(cancelled);
+                complete = SafeOpt.error(cancelled);
             }
         } catch (ExecutionException ex) { // should not happen, since SafeOpt captures exceptions
             Throwable cause = ex.getCause();
             if (cause != null) {
-                return SafeOpt.error(cause);
+                complete = SafeOpt.error(cause);
             } else {
-                return SafeOpt.error(ex);
+                complete = SafeOpt.error(ex);
             }
         } finally {
             if (park >= 0) {
                 async.cp.unparkIfSupported();
             }
         }
+        return complete;
     }
 
     @Override
@@ -153,8 +158,33 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
     protected final Submitter submitter;
     protected final boolean isAsync;
     protected final AsyncWork async;
+    protected SafeOpt<T> complete;
 
-    public SafeOptAsync(Future<SafeOpt<T>> base, Submitter submitter, boolean isAsync, CancelPolicy cp) {
+    public SafeOptAsync(Submitter submitter, SafeOpt<T> complete) {
+        this.submitter = Objects.requireNonNull(submitter);
+        this.complete = Objects.requireNonNull(complete);
+        this.base = (Future) EMPTY;
+        this.isAsync = true;
+        this.async = new AsyncWork(this, null);
+    }
+
+    public SafeOptAsync(Submitter submitter, SafeOpt<T> complete, CancelPolicy cp) {
+        this.submitter = Objects.requireNonNull(submitter);
+        this.complete = Objects.requireNonNull(complete);
+        this.base = (Future) EMPTY;
+        this.isAsync = true;
+        this.async = new AsyncWork(this, cp);
+    }
+
+    public SafeOptAsync(Submitter submitter, SafeOpt<T> complete, AsyncWork asyncWork) {
+        this.submitter = Objects.requireNonNull(submitter);
+        this.complete = Objects.requireNonNull(complete);
+        this.base = (Future) EMPTY;
+        this.isAsync = true;
+        this.async = Objects.requireNonNull(asyncWork);
+    }
+
+    public SafeOptAsync(Submitter submitter, Future<SafeOpt<T>> base, boolean isAsync, CancelPolicy cp) {
         this.submitter = Objects.requireNonNull(submitter);
         this.base = Objects.requireNonNull(base);
         this.isAsync = isAsync || submitter.inside();
@@ -176,16 +206,21 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         if (rawValue != null && rawException != null) {
             throw new IllegalArgumentException("rawValue AND rawException should not be present");
         }
+//        if (rawValue != null) {
+//            return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.of(rawValue)), true, async);
+//        } else {
+//            return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.error(rawException)), true, async); // only async when processing errors, otherwise same as empty
+//        }
+
         if (rawValue != null) {
-            return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.of(rawValue)), true, async);
+            return new SafeOptAsync<>(submitter, SafeOpt.of(rawValue), async);
         } else {
-            return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.error(rawException)), true, async); // only async when processing errors, otherwise same as empty
+            return new SafeOptAsync<>(submitter, SafeOpt.error(rawException), async); // only async when processing errors, otherwise same as empty
         }
     }
-    
-     /**
-     * Not
-     * {@inheritDoc}
+
+    /**
+     * Not {@inheritDoc}
      */
     @Override
     public SafeOpt<Throwable> getError() {

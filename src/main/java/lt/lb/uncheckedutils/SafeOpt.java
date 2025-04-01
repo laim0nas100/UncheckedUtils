@@ -184,7 +184,6 @@ public interface SafeOpt<T> {
      * @return
      */
     public static <T> SafeOptCollapse<T> ofFuture(Future<T> future) {
-        Objects.requireNonNull(future);
         return new SafeOptLazy<>(SafeOpt.of(future), f -> f.map(Future::get));
     }
 
@@ -198,7 +197,6 @@ public interface SafeOpt<T> {
      * @return
      */
     public static <T> SafeOptCollapse<T> ofLazy(T val) {
-        Objects.requireNonNull(val);
         return new SafeOptLazy<>(val, Function.identity());
     }
 
@@ -213,10 +211,7 @@ public interface SafeOpt<T> {
      * @return
      */
     public static <T> SafeOpt<T> ofAsync(Submitter submitter, T val) {
-        if(val == null){
-            return SafeOpt.empty();
-        }
-        return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.of(val)),true,null);
+        return new SafeOptAsync<>(submitter, ofNullable(val));
     }
 
 
@@ -230,10 +225,7 @@ public interface SafeOpt<T> {
      * @return
      */
     public static <T> SafeOpt<T> ofAsync(T val) {
-        if(val == null){
-            return SafeOpt.empty();
-        }
-        return new SafeOptAsync<>(Submitter.DEFAULT_POOL, new CompletedFuture<>(SafeOpt.of(val)),true,null);
+        return new SafeOptAsync<>(Submitter.DEFAULT_POOL, ofNullable(val));
     }
 
     /**

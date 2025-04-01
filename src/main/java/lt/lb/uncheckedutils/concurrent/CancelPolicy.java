@@ -11,6 +11,11 @@ import lt.lb.uncheckedutils.SafeOpt;
  */
 public class CancelPolicy {
 
+    public static final PassableException ERR_DEPENDENCY_COMPLETION = new PassableException("Dependency completion");
+    public static final PassableException ERR_DEPENDENCY_ERROR = new PassableException("Cancelled due to error in dependency");
+    public static final PassableException ERR_CANCEL_EXPLICIT = new PassableException("Cancelled explicitly");
+    
+
     private final AtomicReference<Throwable> state = new AtomicReference<>();
     private final AtomicReference<SafeOpt> cancelledSource = new AtomicReference<>();
     private SafeOpt cancelOpt;
@@ -21,41 +26,54 @@ public class CancelPolicy {
     private final ThreadParkSpace parkedThreads;
 
     public CancelPolicy() {
-        this(true, true,true);
+        this(true, true, true);
     }
-    
+
     public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError) {
-        this(cancelOnError, interruptableAwait, passError,Runtime.getRuntime().availableProcessors());
+        this(cancelOnError, interruptableAwait, passError, Runtime.getRuntime().availableProcessors());
     }
 
-    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait,boolean passError, int expectedThreads) {
-        this(cancelOnError, interruptableAwait,passError, new ThreadParkSpace(expectedThreads));
+    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError, int expectedThreads) {
+        this(cancelOnError, interruptableAwait, passError, new ThreadParkSpace(expectedThreads));
     }
 
-    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError,ThreadParkSpace parkedThreads) {
+    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError, ThreadParkSpace parkedThreads) {
         this.cancelOnError = cancelOnError;
         this.interruptableAwait = interruptableAwait;
         this.passError = passError;
         this.parkedThreads = parkedThreads;
     }
-    
-    public void cancel(Throwable error){
+
+    public void cancel(Throwable error) {
         cancel(null, error);
     }
 
-    public void cancel(SafeOpt source,Throwable error) {
+    public void cancel(SafeOpt source, Throwable error) {
         if (error == null) {
-            error = new PassableException("Cancelled explicitly");
+            error = ERR_CANCEL_EXPLICIT;
         }
-        if(!passError){
-            error = new PassableException("Cancelled due to error in dependency");
+        if (!passError) {
+            error = ERR_DEPENDENCY_ERROR;
         }
         if (state.compareAndSet(null, error)) {
-            
-            if(source !=null){
+
+            if (source != null) {
                 cancelledSource.compareAndSet(null, source);
             }
-            cancelOpt = SafeOpt.error(new CancelException(cancelledSource.get(),error));
+            cancelOpt = SafeOpt.error(new CancelException(cancelledSource.get(), error));
+            if (interruptableAwait) {
+                interruptParkedThreads();
+            }
+        }
+    }
+
+    public void cancelOnCompletion(SafeOpt source) {
+        if (state.compareAndSet(null, ERR_DEPENDENCY_COMPLETION)) {
+
+            if (source != null) {
+                cancelledSource.compareAndSet(null, source);
+            }
+            cancelOpt = SafeOpt.error(new CancelException(source, "Dependency completion"));
             if (interruptableAwait) {
                 interruptParkedThreads();
             }
@@ -69,8 +87,8 @@ public class CancelPolicy {
     public SafeOpt getError() {
         return cancelOpt;
     }
-    
-    public SafeOpt getErrorSource(){
+
+    public SafeOpt getErrorSource() {
         return cancelledSource.get();
     }
 
