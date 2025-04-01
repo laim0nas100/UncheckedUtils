@@ -9,7 +9,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.CompletedFuture;
 import lt.lb.uncheckedutils.concurrent.Submitter;
@@ -63,12 +66,15 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             while (added.get() > 0) {
                 Iterator<FutureTask<SafeOpt>> iterator = work.iterator();
                 if (!iterator.hasNext()) {
+//                    LockSupport.parkNanos(1);
                     continue;//spin wait, because added is not zero
                 }
                 FutureTask<SafeOpt> next = iterator.next();
                 if (next == null) {
                     continue;
                 }
+                iterator.remove();
+                added.decrementAndGet();
                 if (cp != null && cp.cancelled()) {
                     next.cancel(cp.interruptableAwait);
                 } else {
@@ -89,8 +95,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
                 }
 
-                iterator.remove();
-                added.decrementAndGet();
+                
             }
             if (park >= 0) {
                 cp.unparkIfSupported();
@@ -206,11 +211,6 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         if (rawValue != null && rawException != null) {
             throw new IllegalArgumentException("rawValue AND rawException should not be present");
         }
-//        if (rawValue != null) {
-//            return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.of(rawValue)), true, async);
-//        } else {
-//            return new SafeOptAsync<>(submitter, new CompletedFuture<>(SafeOpt.error(rawException)), true, async); // only async when processing errors, otherwise same as empty
-//        }
 
         if (rawValue != null) {
             return new SafeOptAsync<>(submitter, SafeOpt.of(rawValue), async);

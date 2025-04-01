@@ -342,7 +342,25 @@ public class SafeOptTest {
 
 //        new SafeOptTest().testAsyncReal();
 //        benchTest();
+//        ExecutorService def = Checked.createDefaultExecutorService();
+//        ArrayList<Future> futures = new ArrayList<>();
+//        for (int i = 0; i < 50; i++) {
+//            Future<?> submit = def.submit(() -> {
+//                new SafeOptTest().testAsyncReal(true);
+//            });
+//            futures.add(submit);
+//
+//        }
+//        for (Future f : futures) {
+//            f.get();
+//        }
+        for (int i = 0; i < 50; i++) {
+            System.out.println("TeestAsyncReal:"+i);
+                new SafeOptTest().testAsyncReal(true);
 
+        }
+
+        
 //        ThreadFactory factory = Thread.ofVirtual().factory();
     }
 
@@ -491,12 +509,12 @@ public class SafeOptTest {
         for (int i = 0; i < 50; i++) {
             if (i % 10 >= 1) {
                 Future<?> submit = other.submit(() -> {
-                    new SafeOptTest().testAsyncReal( true);
+                    new SafeOptTest().testAsyncReal(true);
                 });
                 futures.add(submit);
             } else {
 //                Future<?> submit = other.submit(() -> {
-                new SafeOptTest().testAsyncReal( true);
+                new SafeOptTest().testAsyncReal(true);
 //                });
 //                futures.add(submit);
             }
