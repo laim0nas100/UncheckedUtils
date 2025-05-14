@@ -15,6 +15,7 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -36,33 +37,33 @@ import org.junit.Test;
  * @author laim0nas100
  */
 public class SafeOptTest {
-    
+
     public static class NullInt {
-        
+
         public Integer get() {
             return null;
         }
     }
-    
+
     @Test
     public void test() {
         SafeOpt<Number> num = SafeOpt.of(10L).select(Long.class);
-        
+
         assertThat(num.isPresent()).isTrue();
-        
+
         SafeOpt<Integer> map = SafeOpt.of(10).map(m -> m * 10);
         Integer expected = 10 * 10;
         assertThat(map.get()).isEqualTo(expected);
-        
+
         SafeOpt<String> empty = SafeOpt.empty().map(m -> m + "");
-        
+
         NullInt nullInt = new NullInt();
         assertThat(empty.isEmpty()).isTrue();
         assertThat(empty.getError().isEmpty()).isTrue();
         SafeOpt<Object> errored = SafeOpt.error(new PassableException("Failed"));
         assertThat(errored.isEmpty()).isTrue();
         assertThat(errored.getError().isPresent()).isTrue();
-        
+
         SafeOpt<Integer> mapNull = map.map(m -> nullInt.get()); // supposed to be null
         SafeOpt<Integer> mapEx = map.map(m -> 0 + nullInt.get());
         ThrowableTypeAssert<NoSuchElementException> noSuchElement = Assertions.assertThatExceptionOfType(NoSuchElementException.class);
@@ -71,7 +72,7 @@ public class SafeOptTest {
         nestedException.isThrownBy(() -> {
             Integer ok = mapEx.asOptional().get() + 0; // exception from SafeOpt invokes first
         });
-        
+
         Assertions.assertThatExceptionOfType(NullPointerException.class).isThrownBy(() -> {
             try {
                 mapEx.asOptional().get();
@@ -81,18 +82,18 @@ public class SafeOptTest {
         });
         ThrowableTypeAssert<NestedException> nested = Assertions.assertThatExceptionOfType(NestedException.class);
         ThrowableTypeAssert<RuntimeException> runtime = Assertions.assertThatExceptionOfType(RuntimeException.class);
-        
+
         nested.isThrownBy(() -> mapEx.throwIfErrorAsNested());
         nested.isThrownBy(() -> mapEx.get());
         runtime.isThrownBy(() -> mapEx.throwIfErrorRuntime());
-        
+
         assertThat(map.flatMapOpt(m -> Optional.ofNullable(m)).get()).isEqualTo(expected);
         assertThat(map.flatMap(m -> SafeOpt.ofNullable(m)).get()).isEqualTo(expected);
         assertThat(map.flatMapOpt(m -> SafeOpt.ofNullable(m).asOptional()).get()).isEqualTo(expected);
         assertThat(map.flatMap(m -> SafeOpt.error(new PassableException("Some error"))).getError().select(PassableException.class).isPresent()).isTrue();
-        
+
     }
-    
+
     @Test
     public void testLazy() {
         List<String> states1 = new ArrayList<>();
@@ -118,7 +119,7 @@ public class SafeOptTest {
                 .peek(m -> {
                     states1.add("peek");
                 });
-        
+
         assertThat(states1).isEmpty();
         Integer result = lazy.chain(m -> {
             return m.orNull();
@@ -156,12 +157,12 @@ public class SafeOptTest {
                 .peekError(error -> {
                     stateError.add("error");
                 });
-        
+
         assertThat(stateError).isEmpty();
         peekError.orNull();// collapse
         assertThat(stateError).containsExactly("error");
     }
-    
+
     @Test
     public void testAsync() {
         Collection<String> states1 = new LinkedBlockingDeque<>();
@@ -169,7 +170,7 @@ public class SafeOptTest {
         SafeOpt<Integer> lazy = SafeOpt.ofAsync("10")
                 .map(Integer::parseInt)
                 .filter(f -> {
-                    
+
                     states1.add("filter");
                     return true;
                 })
@@ -188,7 +189,7 @@ public class SafeOptTest {
                 .peek(m -> {
                     states1.add("peek");
                 });
-        
+
         lazy.orNull();
         assertThat(states1).containsExactly("filter", "map", "flatMap", "flatMapOpt", "peek");
         lazy
@@ -212,7 +213,7 @@ public class SafeOptTest {
                 .peek(m -> {
                     states2.add("peek");
                 }).orNull();
-        
+
         assertThat(states2).containsSequence(states1); //ensure no double inserts
         List<String> stateError = new ArrayList<>();
         SafeOpt<Integer> peekError = SafeOpt.ofAsync("NaN").map(Integer::parseInt)
@@ -223,7 +224,7 @@ public class SafeOptTest {
                 .peekError(error -> {
                     stateError.add("error");
                 });
-        
+
         peekError.getError().map(err -> {
             System.out.println("Using error 1");
             return err;
@@ -232,12 +233,12 @@ public class SafeOptTest {
                     System.out.println("Using error 2");
                     return err;
                 }).orNull();
-        
+
         peekError.orNull();// collapse
         assertThat(stateError).containsExactly("error");
-        
+
     }
-    
+
     public void testAsyncReal(boolean inside) {
         Collection<String> states1 = new LinkedBlockingDeque<>();
         Collection<String> states2 = new LinkedBlockingDeque<>();
@@ -286,7 +287,7 @@ public class SafeOptTest {
                 .peek(m -> {
                     states2.add("peek");
                 });
-        
+
         Collection<String> stateError = new LinkedBlockingDeque<>();
         SafeOpt<Integer> peekError = SafeOpt.ofAsync("NaN").map(Integer::parseInt)
                 .filter(f -> {
@@ -302,23 +303,23 @@ public class SafeOptTest {
             stateError.add("Using error 1");
             return err;
         });
-        
+
         SafeOpt<Throwable> map2 = map1.map(err -> {
             stateError.add("Using error 2");
             return err;
         });
         Throwable orNull = map2.orNull();
-        
+
         assertThat(orNull).isNotNull();
-        
+
         peek.orNull();
         assertThat(states1).containsExactly("filter", "map", "flatMap", "flatMapOpt", "peek");
         assertThat(states1).containsSequence(states2);
-        
+
         assertThat(stateError).containsExactly("error", "Using error 1", "Using error 2");
-        
+
     }
-    
+
     public static void benchTestas() throws Exception {
 //        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
         ExecutorService other = Checked.createDefaultExecutorService();
@@ -336,13 +337,13 @@ public class SafeOptTest {
 //                futures.add(submit);
 
             }
-            
+
         }
         for (Future f : futures) {
             f.get();
         }
     }
-    
+
     @Test
     public void testCancelOnFinish() throws Exception {
         int completion = 5;
@@ -360,9 +361,9 @@ public class SafeOptTest {
                     .chain(scope.completionListener());
             list.add(chain);
         }
-        
+
         System.out.println("Waiting for finish:" + list.size());
-        
+
         try {
 //            for (int i = 0; i < list.size(); i++) {
 //                System.out.println("Awaited:" + list.get(i).throwAnyGet());
@@ -372,10 +373,10 @@ public class SafeOptTest {
             System.out.println(ex.getMessage());
             throw ex;
         }
-        
+
         System.out.println("Completed:" + scope.getCompleted().size());
         System.out.println(scope.getCompleted());
-        
+
         Assertions.assertThat(scope.getCompleted().size()).isEqualTo(completion);
         List<Integer> collect = scope.getCompleted().stream().map(m -> (int) m.get()).collect(Collectors.toList());
         List<Integer> expected = new ArrayList<>();
@@ -384,9 +385,9 @@ public class SafeOptTest {
         }
         Assertions.assertThat(scope.getCompleted().size()).isEqualTo(completion);
         Assertions.assertThat(collect).containsSequence(expected);
-        
+
     }
-    
+
     @Test
     public void testCancel() throws Exception {
         SafeScope scope = new SafeScope(new CancelPolicy(true, true, true));
@@ -451,14 +452,14 @@ public class SafeOptTest {
             }
             return Integer.parseInt(m);
         });
-        
+
         SafeOpt<Integer> val3 = scope.of("NaN").map(m -> {
             System.out.println("Try fail later");
             Thread.sleep(5500);
             System.out.println("Should not FAIL here");
             throw new RuntimeException("We failed again...");
         });
-        
+
         System.out.println("Waiting for finish");
         try {
 //            System.out.println(val1.throwAnyOrNull());
@@ -484,7 +485,7 @@ public class SafeOptTest {
                 );
 //        pool.shutdown();
     }
-    
+
     @Test
     public void testCancelNested() throws Exception {
         SafeScope scope = new SafeScope(new CancelPolicy(true, true, true));
@@ -492,7 +493,7 @@ public class SafeOptTest {
 //        scope.submitter = Submitter.ofExecutorService(pool);
 
         AtomicInteger nested = new AtomicInteger(0);
-        
+
         SafeOpt<String> val1 = scope.of(10)
                 .map(m -> {
                     Thread.sleep(1000);
@@ -558,14 +559,14 @@ public class SafeOptTest {
             }
             return Integer.parseInt(m);
         });
-        
+
         SafeOpt<Integer> val3 = scope.of("NaN").map(m -> {
             System.out.println("Try fail later");
             Thread.sleep(5500);
             System.out.println("Should not FAIL here");
             throw new RuntimeException("We failed again...");
         });
-        
+
         System.out.println("Waiting for finish");
         try {
 //            System.out.println(val1.throwAnyOrNull());
@@ -592,7 +593,7 @@ public class SafeOptTest {
                 );
 //        pool.shutdown();
     }
-    
+
     @Test
     public void testAsyncBench() throws InterruptedException, ExecutionException {
         System.out.println("Testing bench");
@@ -611,23 +612,23 @@ public class SafeOptTest {
 //                });
 //                futures.add(submit);
             }
-            
+
         }
         for (Future f : futures) {
             f.get();
         }
         System.out.println("Benched in:" + (System.currentTimeMillis() - start));
-        
+
     }
-    
+
     public static void pinnedSleep(long sleep) throws InterruptedException {
-        
+
         Object ob = new Object();
         synchronized (ob) {
             Thread.sleep(sleep);
         }
     }
-    
+
     public static void cmdSleep(int seconds) throws IOException, InterruptedException {
         Process start = new ProcessBuilder("ping", "-n", String.valueOf(seconds), "127.0.0.1").start();
         BufferedReader is = new BufferedReader(new InputStreamReader(start.getInputStream()));
@@ -635,7 +636,7 @@ public class SafeOptTest {
         while ((read = is.readLine()) != null) {
 //            System.out.println(read);
         }
-        
+
     }
 
     /**
@@ -644,7 +645,7 @@ public class SafeOptTest {
      * @throws IOException
      */
     public static void read() throws IOException {
-        
+
         String dir = "C:\\files\\YT\\spec";
         List<Path> list = Files.list(Paths.get(dir)).collect(Collectors.toList());
         for (Path file : list) {
@@ -655,31 +656,80 @@ public class SafeOptTest {
                 ByteBuffer allocate = ByteBuffer.allocate(capacity);
                 int read = newByteChannel.read(allocate);
                 r = read == capacity;
-                
+
             }
         }
-        
+
     }
-    
+
+    public static ExecutorService logger;
+
+    public static void asyncPrint(String str) {
+        if (logger != null) {
+            logger.execute(() -> {
+                System.out.println(str);
+            });
+        } else {
+            System.out.println(str);
+        }
+    }
+
+    public static long getId() {
+        return Thread.currentThread().getId();
+    }
+
+    public static SafeOpt<Integer> nestedPeek(int current, int deep, int linear, int split, int iter) {
+        if (current >= deep) {
+            return SafeOpt.of(0);
+        }
+        SafeOpt<Integer> peek = SafeOpt.ofAsync(0).map(m -> {
+            Thread.sleep(1);
+            return m;
+        });
+        for (int i = 0; i < linear; i++) {
+            final int l = i;
+            peek = peek.peek(m -> {
+                asyncPrint(Thread.currentThread().getName() + " " + getId() + " iter_" + iter + " nested_" + current + " linear_" + l);
+
+            });
+//            LockSupport.parkNanos(1_000_000);
+        }
+        for (int i = 0; i < split; i++) {
+            final int l = i;
+            peek = peek.map(m -> {
+                asyncPrint(Thread.currentThread().getName() + " " + getId() + " iter_" + iter + " nested_" + current + " split_" + l);
+                return m;
+
+            }).flatMap(m -> nestedPeek(current + 1, deep, linear, split - 1, iter));
+        }
+        return peek.peek(m -> {
+            Thread.sleep(1);
+        }).flatMap(m -> nestedPeek(current + 1, deep, linear, split, iter));
+
+    }
+
     public static void main(String[] args) throws Exception {
 
 //        new SafeOptTest().testAsyncReal();
 //        benchTest();
         if (true) {
-            SafeOpt<Integer> peek = SafeOpt.ofAsyncUnpinnable(0).peek(m -> {
-                Thread.sleep(1000);
-                System.out.println("Thread1");
-            });
-            SafeOpt.ofAsyncUnpinnable(0).peek(m -> {
-                Thread.sleep(3000);
-                System.out.println("Thread2");
-            });
-            peek.get();
-            peek.peek(m -> {
-                Thread.sleep(1000);
-                System.out.println("Thread1 continuation");
-            });
-            System.out.println("Out");
+            logger = Executors.newSingleThreadExecutor();
+            asyncPrint(Thread.currentThread().getName() + " Start");
+            List<SafeOpt> peeks = new ArrayList<>();
+            for (int i = 0; i < 5; i++) {
+                peeks.add(nestedPeek(0, 10, 10, 0, i));
+            }
+
+//            SafeOpt.ofAsync(0).peek(m -> {
+//                Thread.sleep(1000);
+//                System.out.println(Thread.currentThread().getName() + " " + getId() + " after");
+//            });
+            for (SafeOpt peek : peeks) {
+                peek.get();
+            }
+            asyncPrint(Thread.currentThread().getName() + " End");
+            logger.shutdown();
+
 //            new Thread(() -> {
 //                Checked.checkedRun(()->{
 //                   Thread.sleep(5000);
@@ -690,7 +740,7 @@ public class SafeOptTest {
         }
         ExecutorService def = Checked.createDefaultExecutorService();
         ArrayList<Future> futures = new ArrayList<>();
-        
+
         for (int i = 0; i < 20000; i++) {
             final int in = i;
             Future<?> submit = def.submit(() -> {
@@ -700,18 +750,18 @@ public class SafeOptTest {
                             read();
                             return n;
                         });
-                        
+
                     }
                     return SafeOpt.ofAsync(m).peek(v -> {
                         Thread.sleep(20000);
                     });
                 }).peek(m -> {
-                    
+
                     System.out.println(in);
                 }).get();
             });
             futures.add(submit);
-            
+
         }
         for (Future f : futures) {
             f.get();

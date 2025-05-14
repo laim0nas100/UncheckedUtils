@@ -145,20 +145,14 @@ public class Checked {
     public static <T> SafeOpt<T> checkedCall(Supplier<T> call) {
         return SafeOpt.ofGet(call);
     }
-    
-     public static ExecutorService createDefaultExecutorService() {
-        try {
-            Method declaredMethod = Executors.class.getDeclaredMethod("newVirtualThreadPerTaskExecutor");
-            if (declaredMethod != null) {
-                Object invoke = declaredMethod.invoke(null);
-                if (invoke instanceof ExecutorService) {
-                    return (ExecutorService) invoke;
-                }
-            }
-        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException ex) {
 
-        }
-        return Executors.newWorkStealingPool();
+    public static SafeOpt<Method> VIRTUAL_EXECUTORS_METHOD = SafeOpt.of(Executors.class)
+            .map(m -> m.getDeclaredMethod("newVirtualThreadPerTaskExecutor"));
 
+    public static ExecutorService createDefaultExecutorService() {
+        return VIRTUAL_EXECUTORS_METHOD
+                .map(m -> m.invoke(null))
+                .select(ExecutorService.class)
+                .orElseGet(() -> Executors.newWorkStealingPool());
     }
 }

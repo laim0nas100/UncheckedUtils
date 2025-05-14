@@ -12,7 +12,7 @@ import lt.lb.uncheckedutils.concurrent.Submitter;
 
 /**
  *
- * @author Lemmin
+ * @author laim0nas100
  */
 public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
 
@@ -28,9 +28,12 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
         public void run() {
             if (workThread.compareAndSet(null, Thread.currentThread())) {
                 try {
-                    while (shouldStayAlive()) {
+                    for (;;) {
                         logic();
-                        await();
+                        if(!shouldStayAlive()){
+                            break;
+                        }
+                        LockSupport.parkNanos(1000_000_000);
                     }
                 } finally {
                     workThread.set(null);
@@ -40,20 +43,7 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
         }
 
         public boolean shouldStayAlive() {
-            if (last == null) {
-                return true;
-            }
-            SafeOpt get = last.get();
-            if (get == null) {
-                return false;
-            }
-//            if (get instanceof SafeOptAsyncUnpinnable) {
-//                SafeOptAsyncUnpinnable unpinnable = (SafeOptAsyncUnpinnable) get;
-//                if (unpinnable.complete != null) {
-//                    return false;
-//                }
-//            }
-            return true;
+            return last.get() != null;
         }
 
     }
@@ -90,7 +80,7 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
     public <O> SafeOpt<O> functor(Function<SafeOpt<T>, SafeOpt<O>> func) {
 
         Objects.requireNonNull(func, "Functor is null");
-        if (!isAsync || submitter.inside()) {
+        if (!isAsync || submitter.continueInPlace(async)) {
             return func.apply(collapse());
         }
 
@@ -101,9 +91,7 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
             try {
                 return func.apply(collapse());
             } finally {
-                if (asWork.last.compareAndSet(last[0], null)) {// looking for cleanup event
-                    asWork.wakeUp();
-                }
+                asWork.last.compareAndSet(last[0], null);// looking for cleanup event
             }
 
         });
@@ -116,7 +104,7 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
             submitter.submit(async);
         } else {
             asWork.last.set(safeOpt);
-            asWork.wakeUp();
+            asWork.wakeUp();//new work submitted, wake up
         }
 
         return safeOpt;
