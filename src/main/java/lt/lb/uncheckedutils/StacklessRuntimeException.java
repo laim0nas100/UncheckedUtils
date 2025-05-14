@@ -2,6 +2,7 @@ package lt.lb.uncheckedutils;
 
 import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.util.Objects;
 
 /**
  *
@@ -45,4 +46,15 @@ public abstract class StacklessRuntimeException extends RuntimeException {
 
     @Override
     public abstract void printStackTrace();
+    
+    /**
+     * The default message is "Explicit error of type (className)"
+     *
+     * @param cls
+     * @return
+     */
+    public static String defaultMessage(Class<? extends Throwable> cls) {
+        Objects.requireNonNull(cls, "Exception type must not be null");
+        return "Explicit error of type " + cls.getSimpleName();
+    }
 }

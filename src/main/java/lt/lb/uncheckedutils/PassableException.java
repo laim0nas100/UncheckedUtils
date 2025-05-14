@@ -53,17 +53,6 @@ public class PassableException extends StacklessRuntimeException {
     }
 
     /**
-     * The default message is "Explicit error of type (className)"
-     *
-     * @param cls
-     * @return
-     */
-    public static String defaultMessage(Class<? extends Throwable> cls) {
-        Objects.requireNonNull(cls, "Exception type must not be null");
-        return "Explicit error of type " + cls.getSimpleName();
-    }
-
-    /**
      * The default exception type is {@link RuntimeException}
      *
      * @return

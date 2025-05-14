@@ -43,24 +43,13 @@ public class PassableExceptionChecked extends Exception {
     }
 
     public PassableExceptionChecked(Class<? extends Throwable> cls) {
-        this(cls, defaultMessage(cls), null);
+        this(cls, StacklessRuntimeException.defaultMessage(cls), null);
     }
 
     public PassableExceptionChecked(Class<? extends Throwable> cls, Object data) {
-        this(cls, defaultMessage(cls), data);
+        this(cls, StacklessRuntimeException.defaultMessage(cls), data);
     }
 
-    /**
-     * The default message is "Explicit error of type (className)"
-     *
-     * @param cls
-     * @return
-     */
-    public static String defaultMessage(Class<? extends Throwable> cls) {
-        Objects.requireNonNull(cls, "Exception type must not be null");
-        return "Explicit error of type " + cls.getSimpleName();
-    }
-    
     /**
      * The default exception type is {@link Exception}
      * @return 
