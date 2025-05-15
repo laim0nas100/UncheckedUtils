@@ -1,6 +1,5 @@
 package lt.lb.uncheckedutils;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -148,11 +147,16 @@ public class Checked {
 
     public static SafeOpt<Method> VIRTUAL_EXECUTORS_METHOD = SafeOpt.of(Executors.class)
             .map(m -> m.getDeclaredMethod("newVirtualThreadPerTaskExecutor"));
+    
+    /**
+     * At least 4, max {@linkplain Runtime#availableProcessors}
+     */
+    public static final int REASONABLE_PARALLELISM = Math.max(4,Runtime.getRuntime().availableProcessors());
 
     public static ExecutorService createDefaultExecutorService() {
         return VIRTUAL_EXECUTORS_METHOD
                 .map(m -> m.invoke(null))
                 .select(ExecutorService.class)
-                .orElseGet(() -> Executors.newWorkStealingPool());
+                .orElseGet(() -> Executors.newWorkStealingPool(REASONABLE_PARALLELISM));
     }
 }

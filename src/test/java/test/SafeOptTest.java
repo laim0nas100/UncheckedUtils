@@ -27,6 +27,7 @@ import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.SafeScope;
+import lt.lb.uncheckedutils.concurrent.Submitter;
 import org.assertj.core.api.Assertions;
 import static org.assertj.core.api.Assertions.assertThat;
 import org.assertj.core.api.ThrowableTypeAssert;
@@ -682,10 +683,11 @@ public class SafeOptTest {
         if (current >= deep) {
             return SafeOpt.of(0);
         }
-        SafeOpt<Integer> peek = SafeOpt.ofAsync(0).map(m -> {
-            Thread.sleep(1);
+        SafeOpt<Integer> peek = SafeOpt.ofAsyncUnpinnable(0).map(m -> {
+            Thread.sleep(10);
             return m;
         });
+//        peek.get();
         for (int i = 0; i < linear; i++) {
             final int l = i;
             peek = peek.peek(m -> {
@@ -703,7 +705,7 @@ public class SafeOptTest {
             }).flatMap(m -> nestedPeek(current + 1, deep, linear, split - 1, iter));
         }
         return peek.peek(m -> {
-            Thread.sleep(1);
+            Thread.sleep(10);
         }).flatMap(m -> nestedPeek(current + 1, deep, linear, split, iter));
 
     }
@@ -717,7 +719,7 @@ public class SafeOptTest {
             asyncPrint(Thread.currentThread().getName() + " Start");
             List<SafeOpt> peeks = new ArrayList<>();
             for (int i = 0; i < 5; i++) {
-                peeks.add(nestedPeek(0, 10, 10, 0, i));
+                peeks.add(nestedPeek(0, 12, 5, 1, i));
             }
 
 //            SafeOpt.ofAsync(0).peek(m -> {
@@ -728,6 +730,7 @@ public class SafeOptTest {
                 peek.get();
             }
             asyncPrint(Thread.currentThread().getName() + " End");
+            asyncPrint(Checked.REASONABLE_PARALLELISM+" "+Submitter.NESTING_LIMIT);
             logger.shutdown();
 
 //            new Thread(() -> {
