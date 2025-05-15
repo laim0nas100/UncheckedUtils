@@ -4,7 +4,6 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -182,8 +181,8 @@ public interface SafeOpt<T> {
      * @param future
      * @return
      */
-    public static <T> SafeOptCollapse<T> ofFuture(Future<T> future) {
-        return new SafeOptLazy<>(SafeOpt.of(future), f -> f.map(Future::get));
+    public static <T> SafeOpt<T> ofFuture(Future<T> future) {
+        return new SafeOptLazySnap<>(SafeOpt.of(future)).map(Future::get);
     }
 
     /**
@@ -195,8 +194,8 @@ public interface SafeOpt<T> {
      * @param val
      * @return
      */
-    public static <T> SafeOptCollapse<T> ofLazy(T val) {
-        return new SafeOptLazy<>(val, Function.identity());
+    public static <T> SafeOpt<T> ofLazy(T val) {
+        return new SafeOptLazySnap<>(SafeOpt.ofNullable(val));
     }
 
     /**
@@ -215,9 +214,8 @@ public interface SafeOpt<T> {
 
 
     /**
-     * Returns async {@code SafeOpt} based on the specified value.Every possible
-     * operation is evaluated in default {@link ForkJoinPool#commonPool()}
-     * executor, similarly to {@link CompletableFuture}.
+     * Returns async {@code SafeOpt} based on the specified value. Every possible
+     * operation is evaluated in default {@linkplain Submitter#DEFAULT_POOL}
      *
      * @param <T>
      * @param val

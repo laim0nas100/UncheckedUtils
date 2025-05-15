@@ -46,6 +46,19 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
     <O> SafeOpt<O> functor(Function<SafeOpt<T>, SafeOpt<O>> func);
 
     /**
+     * Queue up modifying operation (functor) and return resulting
+     * {@link SafeOpt}. If there is no queue, just modify it in place to safe
+     * computing time or threading.
+     *
+     * @param <O>
+     * @param func
+     * @return
+     */
+    default <O> SafeOpt<O> functorCheap(Function<SafeOpt<T>, SafeOpt<O>> func) {
+        return functor(func);
+    }
+
+    /**
      *
      * Collapsed.
      *
@@ -67,15 +80,9 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
         return collapse().rawException();
     }
 
-    /**
-     *
-     * Collapsed.
-     *
-     * {@inheritDoc}
-     */
     @Override
     public default SafeOpt<Throwable> getError() {
-        return produceNew(rawException(), null);
+        return functorCheap(f -> f.getError());
     }
 
     /**
@@ -242,25 +249,25 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     @Override
     public default SafeOpt<Void> keepError() {
-        return functor(f -> f.keepError());
+        return functorCheap(f -> f.keepError());
     }
 
     @Override
     public default SafeOpt<T> peekError(Consumer<Throwable> errorCons) {
         Objects.requireNonNull(errorCons);
-        return functor(f -> f.peekError(errorCons));
+        return functorCheap(f -> f.peekError(errorCons));
     }
 
     @Override
     public default SafeOpt<T> orGet(Supplier<? extends T> supplier) {
         Objects.requireNonNull(supplier);
-        return functor(f -> f.orGet(supplier));
+        return functorCheap(f -> f.orGet(supplier));
     }
 
     @Override
     public default SafeOpt<T> orGetOpt(Supplier<? extends Optional<? extends T>> supplier) {
         Objects.requireNonNull(supplier);
-        return functor(f -> f.orGetOpt(supplier));
+        return functorCheap(f -> f.orGetOpt(supplier));
     }
 
     @Override
@@ -290,7 +297,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
     @Override
     public default <U> SafeOpt<U> select(Class<? extends U> clazz) {
         Objects.requireNonNull(clazz);
-        return functor(f -> f.select(clazz));
+        return functorCheap(f -> f.select(clazz));
     }
 
     @Override
@@ -314,53 +321,53 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
     @Override
     public default SafeOpt<T> peek(UncheckedConsumer<? super T> action) {
         Objects.requireNonNull(action);
-        return functor(f -> f.peek(action));
+        return functorCheap(f -> f.peek(action));
     }
 
     @Override
     public default SafeOpt<T> peek(Consumer<? super T> action) {
         Objects.requireNonNull(action);
-        return functor(f -> f.peek(action));
+        return functorCheap(f -> f.peek(action));
     }
 
     @Override
     public default SafeOpt<T> peekOrElse(UncheckedConsumer<? super T> action, UncheckedRunnable emptyAction) {
         Objects.requireNonNull(action);
         Objects.requireNonNull(emptyAction);
-        return functor(f -> f.peekOrElse(action, emptyAction));
+        return functorCheap(f -> f.peekOrElse(action, emptyAction));
     }
 
     @Override
     public default SafeOpt<T> peekOrElse(Consumer<? super T> action, UncheckedRunnable emptyAction) {
         Objects.requireNonNull(action);
         Objects.requireNonNull(emptyAction);
-        return functor(f -> f.peekOrElse(action, emptyAction));
+        return functorCheap(f -> f.peekOrElse(action, emptyAction));
     }
 
     @Override
     public default SafeOpt<T> peekOrElse(UncheckedConsumer<? super T> action, Runnable emptyAction) {
         Objects.requireNonNull(action);
         Objects.requireNonNull(emptyAction);
-        return functor(f -> f.peekOrElse(action, emptyAction));
+        return functorCheap(f -> f.peekOrElse(action, emptyAction));
     }
 
     @Override
     public default SafeOpt<T> peekOrElse(Consumer<? super T> action, Runnable emptyAction) {
         Objects.requireNonNull(action);
         Objects.requireNonNull(emptyAction);
-        return functor(f -> f.peekOrElse(action, emptyAction));
+        return functorCheap(f -> f.peekOrElse(action, emptyAction));
     }
 
     @Override
     public default SafeOpt<T> peekOrDefault(T def, UncheckedConsumer<? super T> action) {
         Objects.requireNonNull(action);
-        return functor(f -> f.peekOrDefault(def, action));
+        return functorCheap(f -> f.peekOrDefault(def, action));
     }
 
     @Override
     public default SafeOpt<T> peekOrDefault(T def, Consumer<? super T> action) {
         Objects.requireNonNull(action);
-        return functor(f -> f.peekOrDefault(def, action));
+        return functorCheap(f -> f.peekOrDefault(def, action));
     }
 
     /**

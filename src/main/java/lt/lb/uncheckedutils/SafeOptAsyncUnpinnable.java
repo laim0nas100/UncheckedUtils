@@ -56,8 +56,8 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
         super(Submitter.NEW_THREAD, complete, cp);
     }
 
-    protected SafeOptAsyncUnpinnable(Submitter sub, Future<SafeOpt<T>> base, boolean isAsync, AsyncPersistantWork asyncWork) {
-        super(sub, base, isAsync, asyncWork);
+    protected SafeOptAsyncUnpinnable(Submitter sub, Future<SafeOpt<T>> base, AsyncPersistantWork asyncWork) {
+        super(sub, base, asyncWork);
 //        submitter.submit(getWork());
         //assume work was submitted
     }
@@ -75,13 +75,22 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
     protected AsyncPersistantWork getWork() {
         return (AsyncPersistantWork) async;
     }
+    
+    @Override
+    public <O> SafeOpt<O> functorCheap(Function<SafeOpt<T>, SafeOpt<O>> func) {
+        Objects.requireNonNull(func, "Functor is null");
+        if (base.isDone() || complete != null) {
+            return new SafeOptAsyncUnpinnable<>(submitter, func.apply(collapse()), async);
+        } else {
+            return functor(func);
+        }
+    }
 
     @Override
     public <O> SafeOpt<O> functor(Function<SafeOpt<T>, SafeOpt<O>> func) {
-
         Objects.requireNonNull(func, "Functor is null");
-        if (!isAsync || submitter.continueInPlace(async)) {
-            return func.apply(collapse());
+        if (submitter.continueInPlace(async)) {
+            return new SafeOptAsyncUnpinnable<>(submitter, func.apply(collapse()), async);
         }
 
         AsyncPersistantWork asWork = getWork();
@@ -98,7 +107,7 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
         asWork.added.incrementAndGet();
         asWork.work.add((FutureTask) futureTask);
 
-        SafeOptAsyncUnpinnable<O> safeOpt = new SafeOptAsyncUnpinnable<>(submitter, futureTask, isAsync, asWork);
+        SafeOptAsyncUnpinnable<O> safeOpt = new SafeOptAsyncUnpinnable<>(submitter, futureTask, asWork);
         last[0] = safeOpt;
         if (asWork.last.compareAndSet(null, safeOpt)) {//need submittion
             submitter.submit(async);

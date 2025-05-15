@@ -2,6 +2,7 @@ package lt.lb.uncheckedutils;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
 
 /**
@@ -13,6 +14,7 @@ public class SafeOptLazy<S, T> extends SafeOptBase<T> implements SafeOptCollapse
     protected final SafeOpt<S> initial;
     protected final Function<SafeOpt<S>, SafeOpt<T>> function;
 
+    private static final SafeOpt FAILED_COLLAPSE = SafeOpt.error(new PassableException("Failed to collapse SafeOptLazy"));
     /**
      * STATE. We only need to collapse the function once, so we need to save
      * some state.
@@ -31,7 +33,6 @@ public class SafeOptLazy<S, T> extends SafeOptBase<T> implements SafeOptCollapse
     }
 
     protected SafeOptLazy(S initialVal, Function<S, T> func) {
-        Objects.requireNonNull(func);
         this.initial = SafeOpt.ofNullable(initialVal);
         this.function = f -> f.map(func);
     }
@@ -47,7 +48,17 @@ public class SafeOptLazy<S, T> extends SafeOptBase<T> implements SafeOptCollapse
             return collapsed;
         }
         if (inCollapse.compareAndSet(false, true)) {
-            collapsed = function.apply(initial);
+            try {
+                collapsed = function.apply(initial);
+            } finally {
+                if (collapsed == null) {
+                    collapsed = FAILED_COLLAPSE;
+                }
+            }
+        }
+        int waits = 600_000;//60 seconds
+        while (collapsed == null && --waits >= 0) {
+            LockSupport.parkNanos(100_000_000);//100 ms
         }
         return Objects.requireNonNull(collapsed, "collapse accessed from another thread before finishing or collapsed function returned null");
     }
