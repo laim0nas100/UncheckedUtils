@@ -24,12 +24,50 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
     public static class AsyncWork implements Runnable {
 
+        private static final int ADDED_BITS = Integer.SIZE - 1;
+        private static final int ADDED_MASK = (1 << ADDED_BITS) - 1;
+        private static final int QUEUE_MASK = ~ADDED_MASK;
+
+        private static final int OUT_QUEUE = 0 << ADDED_BITS;
+        private static final int IN_QUEUE = 1 << ADDED_BITS;
+
+        private static int addedCount(int c) {
+            return c & ADDED_MASK;
+        }
+
+        private static int queueCount(int c) {
+            return c & QUEUE_MASK;
+        }
+
+        protected boolean dequeue() {
+            return queueChange(OUT_QUEUE);
+        }
+
+        protected boolean enqeuue() {
+            return queueChange(IN_QUEUE);
+        }
+
+        protected int getAdded() {
+            return addedCount(added.get());
+        }
+
+        private boolean queueChange(int state) {
+            for (;;) {
+                int c = added.get();
+                if (queueCount(c) == state) {
+                    return false;
+                }
+                if (added.compareAndSet(c, state | addedCount(c))) {
+                    return true;
+                }
+                LockSupport.parkNanos(1);
+            }
+        }
+
         protected ConcurrentLinkedDeque<FutureTask<SafeOpt>> work = new ConcurrentLinkedDeque<>();
         protected AtomicInteger added = new AtomicInteger(0);
 
         protected AtomicReference<Thread> workThread = new AtomicReference<>(null);
-        protected AtomicInteger queue = new AtomicInteger(0);
-
         protected final SafeOpt first;
         protected final CancelPolicy cp;
 
@@ -45,11 +83,11 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                 try {
                     logic();
                 } finally {
-                    queue.decrementAndGet();
+                    dequeue();
                     workThread.set(null);
                 }
             } else {
-                queue.decrementAndGet();
+                dequeue();
             }
 
         }
@@ -60,7 +98,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                 park = cp.parkIfSupported();
             }
 
-            while (added.get() > 0) {
+            while (getAdded() > 0) {
                 FutureTask<SafeOpt> next = work.poll();
                 if (next == null) {
                     await();// do not kill thread, await due to congestion
@@ -154,12 +192,8 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         FutureTask<SafeOpt<O>> futureTask = new FutureTask<>(() -> func.apply(collapse()));
 
         async.work.add((FutureTask) futureTask);
-//        async.wakeUp();
-        if (async.queue.get() <= 1) {
-            async.queue.incrementAndGet();
+        if (async.enqeuue()) {
             submitter.submit(async);
-        } else {
-            async.queue.decrementAndGet();
         }
 
         return new SafeOptAsync<>(submitter, futureTask, async);
@@ -226,6 +260,5 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             return new SafeOptAsync<>(submitter, SafeOpt.error(rawException), async.cp); // only async when processing errors, otherwise same as empty
         }
     }
-
 
 }

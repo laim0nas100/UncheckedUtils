@@ -30,7 +30,7 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
                 try {
                     for (;;) {
                         logic();
-                        if(!shouldStayAlive()){
+                        if (shouldExit()) {
                             break;
                         }
                         LockSupport.parkNanos(1000_000_000);
@@ -42,8 +42,8 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
 
         }
 
-        public boolean shouldStayAlive() {
-            return last.get() != null;
+        public boolean shouldExit() {
+            return last.get() == null;
         }
 
     }
@@ -75,7 +75,7 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
     protected AsyncPersistantWork getWork() {
         return (AsyncPersistantWork) async;
     }
-    
+
     @Override
     public <O> SafeOpt<O> functorCheap(Function<SafeOpt<T>, SafeOpt<O>> func) {
         Objects.requireNonNull(func, "Functor is null");
@@ -94,6 +94,7 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
         }
 
         AsyncPersistantWork asWork = getWork();
+        asWork.added.incrementAndGet();
         SafeOpt[] last = new SafeOpt[1];
 
         FutureTask<SafeOpt<O>> futureTask = new FutureTask<>(() -> {
@@ -104,7 +105,6 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
             }
 
         });
-        asWork.added.incrementAndGet();
         asWork.work.add((FutureTask) futureTask);
 
         SafeOptAsyncUnpinnable<O> safeOpt = new SafeOptAsyncUnpinnable<>(submitter, futureTask, asWork);
