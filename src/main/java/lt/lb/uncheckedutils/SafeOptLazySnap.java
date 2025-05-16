@@ -128,8 +128,10 @@ public class SafeOptLazySnap<T> extends SafeOptBase<T> implements SafeOptCollaps
 
     protected <O> SafeOpt<O> functor(boolean cheap, Function<SafeOpt<T>, SafeOpt<O>> func) {
         Objects.requireNonNull(func, "Functor is null");
-        if ((cheap && supplier.isDone()) || supplier.isComputed()) {
+        if (supplier.isComputed()) {
             return func.apply(collapse());// no more lazy application after collapse
+        } else if (cheap && supplier.isDone()) {// every mapping was cheap before, so start new chain
+            return new SafeOptLazySnap<>(func.apply(collapse()));
         }
         SafeOptLazySnap<T> prev = this;
         return new SafeOptLazySnap<>(new CachedSupplierCompute<O>() {
