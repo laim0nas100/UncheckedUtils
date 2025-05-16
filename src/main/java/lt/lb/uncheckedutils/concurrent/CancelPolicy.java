@@ -2,6 +2,7 @@ package lt.lb.uncheckedutils.concurrent;
 
 import java.util.concurrent.atomic.AtomicReference;
 import lt.lb.uncheckedutils.CancelException;
+import lt.lb.uncheckedutils.Checked;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
 
@@ -14,7 +15,6 @@ public class CancelPolicy {
     public static final PassableException ERR_DEPENDENCY_COMPLETION = new PassableException("Dependency completion");
     public static final PassableException ERR_DEPENDENCY_ERROR = new PassableException("Cancelled due to error in dependency");
     public static final PassableException ERR_CANCEL_EXPLICIT = new PassableException("Cancelled explicitly");
-    
 
     private final AtomicReference<Throwable> state = new AtomicReference<>();
     private final AtomicReference<SafeOpt> cancelledSource = new AtomicReference<>();
@@ -23,21 +23,17 @@ public class CancelPolicy {
     public final boolean cancelOnError;
     public final boolean interruptableAwait;
     public final boolean passError;
-    private final ThreadParkSpace parkedThreads;
+    private final ThreadLocalParkSpace<Boolean> parkedThreads;
 
     public CancelPolicy() {
         this(true, true, true);
     }
 
     public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError) {
-        this(cancelOnError, interruptableAwait, passError, Runtime.getRuntime().availableProcessors());
+        this(cancelOnError, interruptableAwait, passError, new ThreadLocalParkSpace(Checked.REASONABLE_PARALLELISM));
     }
 
-    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError, int expectedThreads) {
-        this(cancelOnError, interruptableAwait, passError, new ThreadParkSpace(expectedThreads));
-    }
-
-    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError, ThreadParkSpace parkedThreads) {
+    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError, ThreadLocalParkSpace parkedThreads) {
         this.cancelOnError = cancelOnError;
         this.interruptableAwait = interruptableAwait;
         this.passError = passError;
@@ -96,24 +92,23 @@ public class CancelPolicy {
         if (parkedThreads == null) {
             return -1;
         }
-        return parkedThreads.park();
+        ///dummy item park
+        return parkedThreads.park(Boolean.TRUE);
     }
 
-    public boolean unparkIfSupported() {
+    public boolean unparkIfSupported(int idx) {
         if (parkedThreads == null) {
             return false;
         }
-        return parkedThreads.unpark();
+        return parkedThreads.unpark(idx);
     }
 
     public void interruptParkedThreads() {
         if (parkedThreads == null) {
             return;
         }
-        for (Thread thread : parkedThreads.getThreads()) {
-            if (thread.isAlive()) {
-                thread.interrupt();
-            }
+        for (Thread thread : parkedThreads.getAliveThreads()) {
+            thread.interrupt();
         }
     }
 

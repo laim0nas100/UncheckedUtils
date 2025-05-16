@@ -2,10 +2,8 @@ package lt.lb.uncheckedutils;
 
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -96,7 +94,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
             }
             if (park >= 0) {
-                cp.unparkIfSupported();
+                cp.unparkIfSupported(park);
             }
         }
 
@@ -139,7 +137,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             }
         } finally {
             if (park >= 0) {
-                async.cp.unparkIfSupported();
+                async.cp.unparkIfSupported(park);
             }
         }
         return complete;
