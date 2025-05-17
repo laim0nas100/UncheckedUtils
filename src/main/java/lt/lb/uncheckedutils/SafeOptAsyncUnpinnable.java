@@ -1,6 +1,5 @@
 package lt.lb.uncheckedutils;
 
-import java.lang.ref.WeakReference;
 import java.util.Objects;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
@@ -30,13 +29,18 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
                 try {
                     for (;;) {
                         logic();
+                        if (dequeue()) {
+                            continue;
+                        }
                         if (shouldExit()) {
                             break;
                         }
                         LockSupport.parkNanos(1000_000_000);
                     }
                 } finally {
+                    dequeue();
                     workThread.set(null);
+
                 }
             }
 
@@ -110,6 +114,7 @@ public class SafeOptAsyncUnpinnable<T> extends SafeOptAsync<T> {
         SafeOptAsyncUnpinnable<O> safeOpt = new SafeOptAsyncUnpinnable<>(submitter, futureTask, asWork);
         last[0] = safeOpt;
         if (asWork.last.compareAndSet(null, safeOpt)) {//need submittion
+            async.enqeuue();
             submitter.submit(async);
         } else {
             asWork.last.set(safeOpt);

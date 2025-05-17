@@ -718,8 +718,8 @@ public class SafeOptTest {
             logger = Executors.newSingleThreadExecutor();
             asyncPrint(Thread.currentThread().getName() + " Start");
             List<SafeOpt> peeks = new ArrayList<>();
-            for (int i = 0; i < 5; i++) {
-                peeks.add(nestedPeek(0, 12, 5, 1, i));
+            for (int i = 0; i < 7; i++) {
+                peeks.add(nestedPeek(0, 12, 5, 2, i));
             }
 
 //            SafeOpt.ofAsync(0).peek(m -> {

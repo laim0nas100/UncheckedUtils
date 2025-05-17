@@ -51,6 +51,10 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             return addedCount(added.get());
         }
 
+        protected boolean isInQueue() {
+            return queueCount(added.get()) == IN_QUEUE;
+        }
+
         private boolean queueChange(int state) {
             for (;;) {
                 int c = added.get();
@@ -78,16 +82,17 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
         @Override
         public void run() {
-
             if (workThread.compareAndSet(null, Thread.currentThread())) {
                 try {
-                    logic();
+                    while (dequeue()) {
+                        logic();
+                    }
+
                 } finally {
                     dequeue();
                     workThread.set(null);
+                    
                 }
-            } else {
-                dequeue();
             }
 
         }
