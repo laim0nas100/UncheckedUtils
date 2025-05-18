@@ -7,8 +7,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.CompletedFuture;
@@ -24,56 +24,12 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
     public static class AsyncWork implements Runnable {
 
-        private static final int ADDED_BITS = Integer.SIZE - 1;
-        private static final int ADDED_MASK = (1 << ADDED_BITS) - 1;
-        private static final int QUEUE_MASK = ~ADDED_MASK;
-
-        private static final int OUT_QUEUE = 0 << ADDED_BITS;
-        private static final int IN_QUEUE = 1 << ADDED_BITS;
-
-        private static int addedCount(int c) {
-            return c & ADDED_MASK;
-        }
-
-        private static int queueCount(int c) {
-            return c & QUEUE_MASK;
-        }
-
-        protected boolean dequeue() {
-            return queueChange(OUT_QUEUE);
-        }
-
-        protected boolean enqeuue() {
-            return queueChange(IN_QUEUE);
-        }
-
-        protected int getAdded() {
-            return addedCount(added.get());
-        }
-
-        protected boolean isInQueue() {
-            return queueCount(added.get()) == IN_QUEUE;
-        }
-
-        private boolean queueChange(int state) {
-            for (;;) {
-                int c = added.get();
-                if (queueCount(c) == state) {
-                    return false;
-                }
-                if (added.compareAndSet(c, state | addedCount(c))) {
-                    return true;
-                }
-                LockSupport.parkNanos(1);
-            }
-        }
-
         protected ConcurrentLinkedDeque<FutureTask<SafeOpt>> work = new ConcurrentLinkedDeque<>();
-        protected AtomicInteger added = new AtomicInteger(0);
 
-        protected AtomicReference<Thread> workThread = new AtomicReference<>(null);
         protected final SafeOpt first;
         protected final CancelPolicy cp;
+        public final ReentrantLock lock = new ReentrantLock(false);
+        public final AtomicInteger submits = new AtomicInteger(0);
 
         public AsyncWork(SafeOpt first, CancelPolicy cp) {
             this.first = first;
@@ -81,20 +37,15 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         }
 
         @Override
-        public void run() {
-            if (workThread.compareAndSet(null, Thread.currentThread())) {
-                try {
-                    while (dequeue()) {
-                        logic();
-                    }
-
-                } finally {
-                    dequeue();
-                    workThread.set(null);
-                    
-                }
+        public  void run() {
+            lock.lock();
+            try{
+                
+                logic();
+                submits.decrementAndGet();// decrement only after locking
+            }finally{
+                lock.unlock();
             }
-
         }
 
         protected void logic() {
@@ -103,14 +54,17 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                 park = cp.parkIfSupported();
             }
 
-            while (getAdded() > 0) {
+            int tries = 3;
+            while (tries > 0) {
                 FutureTask<SafeOpt> next = work.poll();
                 if (next == null) {
                     await();// do not kill thread, await due to congestion
+                    tries--;
                     continue;
                 }
+                tries = 3;
                 // next non-null
-                added.decrementAndGet();
+//                added.decrementAndGet();
                 if (next.isDone()) {
                     continue;
                 }
@@ -139,10 +93,6 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             if (park >= 0) {
                 cp.unparkIfSupported(park);
             }
-        }
-
-        public void wakeUp() {
-            LockSupport.unpark(workThread.get());
         }
 
         protected void await() {
@@ -193,13 +143,9 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             return new SafeOptAsync<>(submitter, func.apply(collapse()), async);
         }
 
-        async.added.incrementAndGet();
         FutureTask<SafeOpt<O>> futureTask = new FutureTask<>(() -> func.apply(collapse()));
-
         async.work.add((FutureTask) futureTask);
-        if (async.enqeuue()) {
-            submitter.submit(async);
-        }
+        submitter.submit(async.lock.isLocked(),async);
 
         return new SafeOptAsync<>(submitter, futureTask, async);
     }

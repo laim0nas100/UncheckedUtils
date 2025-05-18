@@ -1,8 +1,9 @@
 package lt.lb.uncheckedutils.concurrent;
 
+import java.util.Collection;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicReference;
 import lt.lb.uncheckedutils.CancelException;
-import lt.lb.uncheckedutils.Checked;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
 
@@ -15,6 +16,9 @@ public class CancelPolicy {
     public static final PassableException ERR_DEPENDENCY_COMPLETION = new PassableException("Dependency completion");
     public static final PassableException ERR_DEPENDENCY_ERROR = new PassableException("Cancelled due to error in dependency");
     public static final PassableException ERR_CANCEL_EXPLICIT = new PassableException("Cancelled explicitly");
+
+    private final CancelPolicy parent;
+    private Collection<CancelPolicy> children = new ConcurrentLinkedDeque<>();
 
     private final AtomicReference<Throwable> state = new AtomicReference<>();
     private final AtomicReference<SafeOpt> cancelledSource = new AtomicReference<>();
@@ -30,14 +34,22 @@ public class CancelPolicy {
     }
 
     public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError) {
-        this(cancelOnError, interruptableAwait, passError, new ThreadLocalParkSpace(Checked.REASONABLE_PARALLELISM));
+        this(null, cancelOnError, interruptableAwait, passError, new ThreadLocalParkSpace());
     }
 
-    public CancelPolicy(boolean cancelOnError, boolean interruptableAwait, boolean passError, ThreadLocalParkSpace parkedThreads) {
+    public CancelPolicy(CancelPolicy parent, boolean cancelOnError, boolean interruptableAwait, boolean passError) {
+        this(parent, cancelOnError, interruptableAwait, passError, new ThreadLocalParkSpace());
+    }
+
+    public CancelPolicy(CancelPolicy parent, boolean cancelOnError, boolean interruptableAwait, boolean passError, ThreadLocalParkSpace parkedThreads) {
+        this.parent = parent;
         this.cancelOnError = cancelOnError;
         this.interruptableAwait = interruptableAwait;
         this.passError = passError;
         this.parkedThreads = parkedThreads;
+        if (parent != null) {
+            parent.children.add(this);
+        }
     }
 
     public void cancel(Throwable error) {
@@ -56,7 +68,14 @@ public class CancelPolicy {
             if (source != null) {
                 cancelledSource.compareAndSet(null, source);
             }
-            cancelOpt = SafeOpt.error(new CancelException(cancelledSource.get(), error));
+            SafeOpt csource = cancelledSource.get();
+            cancelOpt = SafeOpt.error(new CancelException(csource, error));
+            for (CancelPolicy child : children) {
+                if (child == null) {
+                    continue;
+                }
+                child.cancel(csource, error);
+            }
             if (interruptableAwait) {
                 interruptParkedThreads();
             }
@@ -70,6 +89,12 @@ public class CancelPolicy {
                 cancelledSource.compareAndSet(null, source);
             }
             cancelOpt = SafeOpt.error(new CancelException(source, "Dependency completion"));
+            for (CancelPolicy child : children) {
+                if (child == null) {
+                    continue;
+                }
+                child.cancelOnCompletion(source);
+            }
             if (interruptableAwait) {
                 interruptParkedThreads();
             }
@@ -77,14 +102,31 @@ public class CancelPolicy {
     }
 
     public boolean cancelled() {
+        if (parent != null) {
+            if (parent.cancelled()) {
+                return true;
+            }
+        }
         return state.get() != null;
     }
 
     public SafeOpt getError() {
+        if (parent != null) {
+            SafeOpt error = parent.getError();
+            if (error != null) {
+                return error;
+            }
+        }
         return cancelOpt;
     }
 
     public SafeOpt getErrorSource() {
+        if (parent != null) {
+            SafeOpt error = parent.getErrorSource();
+            if (error != null) {
+                return error;
+            }
+        }
         return cancelledSource.get();
     }
 

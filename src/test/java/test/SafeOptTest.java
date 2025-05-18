@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
 import lt.lb.uncheckedutils.CancelException;
 import lt.lb.uncheckedutils.Checked;
@@ -353,7 +354,7 @@ public class SafeOptTest {
 //        scope.submitter = Submitter.ofExecutorService(pool);
 
         List<SafeOpt<Integer>> list = new ArrayList<>();
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 8; i++) {
             SafeOpt<Integer> chain = scope.of(i)
                     .map(f -> {
                         Thread.sleep(f * 1000);
@@ -601,8 +602,8 @@ public class SafeOptTest {
         long start = System.currentTimeMillis();
         ExecutorService other = Checked.createDefaultExecutorService();
         ArrayList<Future> futures = new ArrayList<>();
-        for (int i = 0; i < 50; i++) {
-            if (i % 10 >= 1) {
+        for (int i = 0; i < 5; i++) {
+            if (i % 10 >= 0) {
                 Future<?> submit = other.submit(() -> {
                     new SafeOptTest().testAsyncReal(true);
                 });
@@ -619,6 +620,7 @@ public class SafeOptTest {
             f.get();
         }
         System.out.println("Benched in:" + (System.currentTimeMillis() - start));
+        other.shutdown();
 
     }
 
@@ -679,11 +681,12 @@ public class SafeOptTest {
         return Thread.currentThread().getId();
     }
 
-    public static SafeOpt<Integer> nestedPeek(int current, int deep, int linear, int split, int iter) {
+    public static SafeOpt<Integer> nestedPeek(boolean async,int current, int deep, int linear, int split, int iter) {
         if (current >= deep) {
             return SafeOpt.of(0);
         }
-        SafeOpt<Integer> peek = SafeOpt.ofAsyncUnpinnable(0).map(m -> {
+        SafeOpt<Integer> first = async ? SafeOpt.ofAsync(0) : SafeOpt.ofAsyncUnpinnable(0);
+        SafeOpt<Integer> peek = first.map(m -> {
             Thread.sleep(10);
             return m;
         });
@@ -692,9 +695,8 @@ public class SafeOptTest {
             final int l = i;
             peek = peek.peek(m -> {
                 asyncPrint(Thread.currentThread().getName() + " " + getId() + " iter_" + iter + " nested_" + current + " linear_" + l);
-
+                LockSupport.parkNanos(1_000_000);
             });
-//            LockSupport.parkNanos(1_000_000);
         }
         for (int i = 0; i < split; i++) {
             final int l = i;
@@ -702,11 +704,12 @@ public class SafeOptTest {
                 asyncPrint(Thread.currentThread().getName() + " " + getId() + " iter_" + iter + " nested_" + current + " split_" + l);
                 return m;
 
-            }).flatMap(m -> nestedPeek(current + 1, deep, linear, split - 1, iter));
+            }).flatMap(m -> nestedPeek(async,current + 1, deep, linear, split - 1, iter));
         }
-        return peek.peek(m -> {
-            Thread.sleep(10);
-        }).flatMap(m -> nestedPeek(current + 1, deep, linear, split, iter));
+        return peek.map(m -> {
+//            Thread.sleep(10);
+            return m;
+        }).flatMap(m -> nestedPeek(async,current + 1, deep, linear, split, iter));
 
     }
 
@@ -719,7 +722,7 @@ public class SafeOptTest {
             asyncPrint(Thread.currentThread().getName() + " Start");
             List<SafeOpt> peeks = new ArrayList<>();
             for (int i = 0; i < 7; i++) {
-                peeks.add(nestedPeek(0, 12, 5, 2, i));
+                peeks.add(nestedPeek(false,0, 15, 5, 1, i));
             }
 
 //            SafeOpt.ofAsync(0).peek(m -> {

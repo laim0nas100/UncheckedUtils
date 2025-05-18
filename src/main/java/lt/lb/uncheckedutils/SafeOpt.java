@@ -212,10 +212,10 @@ public interface SafeOpt<T> {
         return new SafeOptAsync<>(submitter, ofNullable(val));
     }
 
-
     /**
-     * Returns async {@code SafeOpt} based on the specified value. Every possible
-     * operation is evaluated in default {@linkplain Submitter#DEFAULT_POOL}
+     * Returns async {@code SafeOpt} based on the specified value. Every
+     * possible operation is evaluated in default
+     * {@linkplain Submitter#DEFAULT_POOL}
      *
      * @param <T>
      * @param val
@@ -224,9 +224,9 @@ public interface SafeOpt<T> {
     public static <T> SafeOpt<T> ofAsync(T val) {
         return new SafeOptAsync<>(Submitter.DEFAULT_POOL, ofNullable(val));
     }
-    
+
     public static <T> SafeOpt<T> ofAsyncUnpinnable(T val) {
-        return new SafeOptAsyncUnpinnable<>(ofNullable(val));
+        return new SafeOptAsync<>(Submitter.NEW_THREAD, ofNullable(val));
     }
 
     /**

@@ -40,31 +40,34 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
             return thread.get() != null && thread.get().isAlive();
         }
     }
+    
+    private static class Volatile{
+        public Item[] items;
+    }
 
-    private Item[] items;
-    private volatile int writes = 0;
+    private volatile Volatile array = new Volatile();
 
     public ThreadLocalParkSpace() {
-        this(8);
+        this(4);
     }
 
     public ThreadLocalParkSpace(int initialSize) {
-        initialSize = Math.min(8, initialSize);
-        items = new Item[initialSize];
+        initialSize = Math.max(4, initialSize);
+        array.items = new Item[initialSize];
         for (int i = 0; i < initialSize; i++) {
-            items[i] = new Item();
+            array.items[i] = new Item();
         }
     }
 
     protected int tryParkReplace(int index, T item) {
-        int size = items.length;
+        int size = array.items.length;
         int tries = size;
         while (tries >= 0) {
 
             index = slidingIndex.accumulateAndGet(0, (current, discard) -> {
                 return (current + 1) % size;
             });
-            Item container = items[index];
+            Item container = array.items[index];
             if (container.thread.compareAndSet(null, Thread.currentThread())) {
                 container.item = item;
                 reservedIndex.set(index);
@@ -93,10 +96,10 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
         }
         for (;;) {
 
-            int prevWrites = 0;
+            int prevLength = -1;
             try {
                 lock.readLock().lock();
-                prevWrites = writes;
+                prevLength = array.items.length;
                 index = tryParkReplace(index, item);
             } finally {
                 lock.readLock().unlock();
@@ -109,16 +112,15 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
             try {
                 // grow
                 lock.writeLock().lock();
-                if (prevWrites == writes) { // other thread maybe grew array while we were waiting for lock, try again
-                    int oldSize = items.length;
+                if (prevLength == array.items.length) { // other thread maybe grew array while we were waiting for lock, try again
+                    int oldSize = array.items.length;
                     int newSize = (int) Math.round(oldSize * 1.5);
                     int actualNewSize = oldSize + Math.min(16, newSize - oldSize); // conservative grow
-                    items = Arrays.copyOf(items, actualNewSize);
-                    items[oldSize] = new Item(Thread.currentThread(), item);
+                    array.items = Arrays.copyOf(array.items, actualNewSize);
+                    array.items[oldSize] = new Item(Thread.currentThread(), item);
                     for (int i = oldSize + 1; i < actualNewSize; i++) {
-                        items[i] = new Item();
+                        array.items[i] = new Item();
                     }
-                    writes++;
                     return oldSize;
                 }
 
@@ -133,7 +135,7 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
         Objects.requireNonNull(item);
         lock.readLock().lock();
         try {
-            Item cont = items[index];
+            Item cont = array.items[index];
             if (cont.thread.get() == Thread.currentThread()) {
                 cont.item = item;
                 return true;
@@ -151,14 +153,14 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
                 return false;
             }
         }
-        if (items[index].thread.compareAndSet(Thread.currentThread(), null)) {
+        if (array.items[index].thread.compareAndSet(Thread.currentThread(), null)) {
             return true;
         }
         return false;
     }
 
     private Stream<Item> getAliveContainers() {
-        return Stream.of(items).filter(f -> f.isAlive());
+        return Stream.of(array.items).filter(f -> f.isAlive());
     }
 
     public List<T> getPlacedItems() {
@@ -198,12 +200,12 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
 
             @Override
             public boolean hasNext() {
-                return i + 1 < items.length;
+                return i + 1 < array.items.length;
             }
 
             @Override
             public T next() {
-                Item container = items[++i];
+                Item container = array.items[++i];
                 return (T) container.item;
             }
         };

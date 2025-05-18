@@ -10,7 +10,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.SafeOptAsync;
-import lt.lb.uncheckedutils.SafeOptAsyncUnpinnable;
 
 /**
  *
@@ -18,6 +17,7 @@ import lt.lb.uncheckedutils.SafeOptAsyncUnpinnable;
  */
 public class SafeScope {
 
+    public volatile SafeScope parent;
     protected ConcurrentLinkedDeque<SafeOpt> completed = new ConcurrentLinkedDeque<>();
     protected CountDownLatch countDown;
 
@@ -63,9 +63,9 @@ public class SafeScope {
     }
 
     public <T> SafeOptAsync<T> ofUnpinnable(T value) {
-        return new SafeOptAsyncUnpinnable<>(SafeOpt.ofNullable(value), cp);
+        return new SafeOptAsync<>(Submitter.NEW_THREAD, SafeOpt.ofNullable(value), cp);
     }
-
+    
     public boolean isCancelled() {
         return cp == null ? false : cp.cancelled();
     }

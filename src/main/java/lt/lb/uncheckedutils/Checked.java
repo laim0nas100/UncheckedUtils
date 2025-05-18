@@ -4,6 +4,9 @@ import java.lang.reflect.Method;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import lt.lb.uncheckedutils.func.UncheckedRunnable;
@@ -147,16 +150,16 @@ public class Checked {
 
     public static SafeOpt<Method> VIRTUAL_EXECUTORS_METHOD = SafeOpt.of(Executors.class)
             .map(m -> m.getDeclaredMethod("newVirtualThreadPerTaskExecutor"));
-    
+
     /**
      * At least 4, max {@linkplain Runtime#availableProcessors}
      */
-    public static final int REASONABLE_PARALLELISM = Math.max(4,Runtime.getRuntime().availableProcessors());
+    public static final int REASONABLE_PARALLELISM = Math.max(4, Runtime.getRuntime().availableProcessors());
 
     public static ExecutorService createDefaultExecutorService() {
         return VIRTUAL_EXECUTORS_METHOD
                 .map(m -> m.invoke(null))
                 .select(ExecutorService.class)
-                .orElseGet(() -> Executors.newWorkStealingPool(REASONABLE_PARALLELISM));
+                .orElseGet(() -> new ThreadPoolExecutor(0, Integer.MAX_VALUE, 1, TimeUnit.SECONDS, new LinkedBlockingDeque<>()));
     }
 }
