@@ -4,6 +4,7 @@ import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import lt.lb.uncheckedutils.Checked;
 import lt.lb.uncheckedutils.SafeOptAsync;
 
@@ -24,7 +25,11 @@ public abstract class Submitter {
 
     public abstract boolean continueInPlace(SafeOptAsync.AsyncWork task);
 
-    public abstract void submit(boolean locked, SafeOptAsync.AsyncWork task);
+    public abstract void submit(SafeOptAsync.AsyncWork task);
+
+    public boolean limited() {
+        return false;
+    }
 
     private static boolean insideCheck(ArrayDeque<SafeOptAsync.AsyncWork> stack, int nesting, SafeOptAsync.AsyncWork task) {
         if (stack == null) {
@@ -41,7 +46,7 @@ public abstract class Submitter {
         }
         return new Submitter() {
 
-            private final ThreadLocal<ArrayDeque<SafeOptAsync.AsyncWork>> inside = ThreadLocal.withInitial(() -> new ArrayDeque<>(nesting));
+            private final ThreadLocal<ArrayDeque<SafeOptAsync.AsyncWork>> inside = new ThreadLocal<>();
 
             @Override
             public boolean continueInPlace(SafeOptAsync.AsyncWork task) {
@@ -49,9 +54,8 @@ public abstract class Submitter {
             }
 
             @Override
-            public void submit(boolean locked, final SafeOptAsync.AsyncWork task) {
+            public void submit(final SafeOptAsync.AsyncWork task) {
                 Objects.requireNonNull(task);
-                int submits = task.submits.incrementAndGet();
                 ArrayDeque<SafeOptAsync.AsyncWork> current = inside.get();
 
                 if (insideCheck(current, nesting, task)) {
@@ -63,27 +67,30 @@ public abstract class Submitter {
                     }
                     return;
                 }
-                startThread(submits, current, task);
+                startThread(current, task);
 
             }
 
-            public void startThread(int submits, ArrayDeque<SafeOptAsync.AsyncWork> current, SafeOptAsync.AsyncWork task) {
-                if (submits > 2) {//one locked one waiting for lock inside new thread
-                    task.submits.decrementAndGet();
-                    return;
-                }
+            public void startThread(ArrayDeque<SafeOptAsync.AsyncWork> current, SafeOptAsync.AsyncWork task) {
 
-                ArrayDeque<SafeOptAsync.AsyncWork> inherited = new ArrayDeque<>(current);
-                inherited.add(task);
+                ArrayDeque<SafeOptAsync.AsyncWork> stack = current == null ? new ArrayDeque<>() : new ArrayDeque<>(current);
+                stack.add(task);
 
                 service.submit(() -> {
+
                     ArrayDeque<SafeOptAsync.AsyncWork> local = inside.get();
+                    if (local == null) {
+                        local = stack;
+                        inside.set(local);
+                    } else {
+                        local.addAll(stack);
+                    }
                     try {
-                        local.addAll(inherited);
+
                         task.run();
 
                     } finally {
-                        Iterator<SafeOptAsync.AsyncWork> descendingIterator = inherited.descendingIterator();
+                        Iterator<SafeOptAsync.AsyncWork> descendingIterator = stack.descendingIterator();
                         while (descendingIterator.hasNext()) {
                             local.removeLastOccurrence(descendingIterator.next());
                         }
@@ -94,15 +101,100 @@ public abstract class Submitter {
         };
     }
 
+    /**
+     *
+     * @param service the work-horse and thread spawner
+     * @param parallelism how many threads to be expected and limit new ones to
+     * prevent deadlocks (0 means in-place execution)
+     * @param nesting how much nesting can there be (0 means in-place execution)
+     * @return
+     */
+    public static Submitter ofLimitedParallelism(final ExecutorService service, final int parallelism, final int nesting) {
+        Objects.requireNonNull(service);
+        if (parallelism < 0) {
+            throw new IllegalArgumentException("Negative parallelism");
+        }
+        if (nesting < 0) {
+            throw new IllegalArgumentException("Negative nesting");
+        }
+        return new Submitter() {
+
+            private final AtomicInteger freeThreads = new AtomicInteger(parallelism);
+            private final ThreadLocal<ArrayDeque<SafeOptAsync.AsyncWork>> inside = ThreadLocal.withInitial(() -> new ArrayDeque<>(nesting));
+
+            @Override
+            public boolean continueInPlace(SafeOptAsync.AsyncWork task) {
+                return (insideCheck(inside.get(), nesting, task) || freeThreads.get() <= 0);
+            }
+
+            @Override
+            public boolean limited() {
+                return true;
+            }
+
+            @Override
+            public void submit(final SafeOptAsync.AsyncWork task) {
+                Objects.requireNonNull(task);
+
+                ArrayDeque<SafeOptAsync.AsyncWork> current = inside.get();
+
+                if (insideCheck(current, nesting, task) || freeThreads.get() <= 0) {
+                    try {
+
+                        current.addLast(task);
+                        task.run();
+
+                    } finally {
+                        current.removeLastOccurrence(task);
+                    }
+                    return;
+                }
+                if (freeThreads.decrementAndGet() >= 0) {
+                    ArrayDeque<SafeOptAsync.AsyncWork> inherited = new ArrayDeque<>(inside.get());
+                    inherited.add(task);
+                    service.submit(() -> {
+                        ArrayDeque<SafeOptAsync.AsyncWork> local = inside.get();
+                        try {
+                            local.addAll(inherited);
+                            task.run();
+
+                        } finally {
+                            freeThreads.incrementAndGet();
+                            Iterator<SafeOptAsync.AsyncWork> descendingIterator = inherited.descendingIterator();
+                            while (descendingIterator.hasNext()) {
+                                local.removeLastOccurrence(descendingIterator.next());
+                            }
+                        }
+                    });
+                    return;
+
+                }
+                freeThreads.incrementAndGet();
+                try {
+                    current.addLast(task);
+                    task.run();
+
+                } finally {
+                    current.removeLastOccurrence(task);
+                }
+
+            }
+        };
+    }
+
     public static final Submitter DEFAULT_POOL = createDefault();
 
     private static Submitter createDefault() {
-        return ofUnlimitedParallelism(Checked.createDefaultExecutorService(), NESTING_LIMIT);
+        ExecutorService service = Checked.createDefaultExecutorService();
+        if (Checked.VIRTUAL_EXECUTORS_METHOD.isPresent()) {//virtual online
+            return ofUnlimitedParallelism(service, NESTING_LIMIT);
+        }
+        return ofLimitedParallelism(service, Checked.REASONABLE_PARALLELISM, 1);
     }
 
     public static final Submitter IN_PLACE = new Submitter() {
         @Override
-        public void submit(boolean locked, SafeOptAsync.AsyncWork task) {
+        public void submit(SafeOptAsync.AsyncWork task) {
             task.run();
         }
 
@@ -113,14 +205,13 @@ public abstract class Submitter {
     };
 
     public static final Submitter NEW_THREAD = new Submitter() {
-        private final int nesting = NESTING_LIMIT;
+        private final int nesting = Math.min(2, NESTING_LIMIT);
         //always start new thread even if nested calls
-        private final ThreadLocal<ArrayDeque<SafeOptAsync.AsyncWork>> inside = ThreadLocal.withInitial(() -> new ArrayDeque<>(nesting));
+        private final ThreadLocal<ArrayDeque<SafeOptAsync.AsyncWork>> inside = ThreadLocal.withInitial(() -> null);
 
         @Override
-        public void submit(boolean locked, SafeOptAsync.AsyncWork task) {
+        public void submit(SafeOptAsync.AsyncWork task) {
             Objects.requireNonNull(task);
-            int submits = task.submits.incrementAndGet();
             ArrayDeque<SafeOptAsync.AsyncWork> current = inside.get();
             if (insideCheck(current, nesting, task)) { // same context
                 //just run
@@ -131,23 +222,18 @@ public abstract class Submitter {
                     current.removeLastOccurrence(task);
                 }
             } else {
-                startThread(submits, current, task);
+                startThread(current, task);
             }
         }
 
-        public void startThread(int submits, ArrayDeque<SafeOptAsync.AsyncWork> current, SafeOptAsync.AsyncWork task) {
+        public void startThread(ArrayDeque<SafeOptAsync.AsyncWork> current, SafeOptAsync.AsyncWork task) {
 
-            if (submits > 2) {//one locked one waiting for lock inside new thread
-                task.submits.decrementAndGet();
-                return;
-            }
-
-            ArrayDeque<SafeOptAsync.AsyncWork> stack = new ArrayDeque<>(current);
+            ArrayDeque<SafeOptAsync.AsyncWork> stack = current == null ? new ArrayDeque<>() : new ArrayDeque<>(current);
             stack.add(task);
             new Thread(() -> {
                 try {
 
-                    inside.get().addAll(stack);//is empty
+                    inside.set(stack);//is empty
                     task.run();
                 } finally {
                     inside.get().clear();
