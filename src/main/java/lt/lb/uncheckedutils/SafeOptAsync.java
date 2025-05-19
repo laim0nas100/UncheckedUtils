@@ -22,15 +22,22 @@ import lt.lb.uncheckedutils.concurrent.Submitter;
  */
 public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T> {
 
+    public static final boolean DEBUG = false;
+
+    public static String thread() {
+        Thread t = Thread.currentThread();
+        return t.getName() + " " + t.getId();
+    }
+
     public static final CompletedFuture<SafeOpt> EMPTY = new CompletedFuture<>(SafeOpt.empty());
 
     public static class AsyncWork implements Runnable {
 
         protected final SafeOpt first;
         protected final CancelPolicy cp;
-        private final Deque<FutureTask<SafeOpt>> workQueue = new ArrayDeque<>();
+        protected final Deque<FutureTask<SafeOpt>> workQueue = new ArrayDeque<>();
 
-        private volatile int state = UNSTARTED;
+        protected volatile int state = UNSTARTED;
 
         public static final int UNSTARTED = 0;
         public static final int ACTIVE = 1;
@@ -38,9 +45,10 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
         public final ReentrantLock lock = new ReentrantLock(true);
 
-        private FutureTask<SafeOpt> getNext() {
-            lock.lock();
+        private FutureTask<SafeOpt> getNext() throws InterruptedException {
             try {
+
+                lock.lock(); // dont interrupt, we need to process every submitted task anyway
                 for (;;) {
                     FutureTask<SafeOpt> next = workQueue.poll();
                     if (next == null) {
@@ -60,7 +68,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
         }
 
-        public <O> void addMaybeSubmit(Submitter submitter, FutureTask<SafeOpt> task) {
+        public void addMaybeSubmit(Submitter submitter, FutureTask<SafeOpt> task) {
             lock.lock();
             try {
                 workQueue.add(task);
@@ -89,27 +97,34 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             }
 
             for (;;) {
-                FutureTask<SafeOpt> next = getNext();
-                if (next == null) {
-                    break;
-                }
-                // next not done
-//                added.decrementAndGet();
-
-                // not done
-                if (cp != null && cp.cancelled()) {
-                    next.cancel(cp.interruptableAwait);
-                    continue;
-                }
-
                 try {
+                    FutureTask<SafeOpt> next = getNext();
+                    if (next == null) {
+                        break;
+                    }
+
+                    // not done
+                    if (cp != null && cp.cancelled()) {
+                        if (DEBUG) {
+                            System.out.println("Cancelled without running");
+                        }
+                        next.cancel(cp.interruptableAwait);
+                        continue;
+                    }
+
                     next.run();
                     SafeOpt get = next.get();
                     if (cp != null && cp.cancelOnError && get.hasError()) {
                         cp.cancel(first, get.rawException());
+                        if (DEBUG) {
+                            System.out.println("Cancelled after running");
+                        }
                     }
 
                 } catch (CancellationException | ExecutionException | InterruptedException discard) {
+                    if (DEBUG) {
+                        System.out.println("Discarded:" + discard.getClass().getSimpleName() + " " + discard.getMessage());
+                    }
                     //every FutureTask is a mapping to SafeOpt. SafeOpt never throws by desing
                     //only way to get here is by unlikely thread race condition if it is cancelled after checking isDone,
                     //even then it should be handled by collapse method
@@ -145,8 +160,11 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                     try {
                         complete = base.get(500, TimeUnit.MILLISECONDS);
                     } catch (TimeoutException ex) {
-                        async.lock.lock();
+                        boolean locked = false;
                         try {
+
+                            async.lock.lockInterruptibly();
+                            locked = true;
                             if (async.state == AsyncWork.ACTIVE) {
                                 continue;
                             }
@@ -155,7 +173,9 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                             }
 
                         } finally {
-                            async.lock.unlock();
+                            if (locked) {
+                                async.lock.unlock();
+                            }
                         }
                     }
                 }

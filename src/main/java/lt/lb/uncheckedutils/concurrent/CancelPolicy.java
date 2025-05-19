@@ -4,6 +4,7 @@ import java.util.Collection;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicReference;
 import lt.lb.uncheckedutils.CancelException;
+import static lt.lb.uncheckedutils.SafeOptAsync.DEBUG;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
 
@@ -18,7 +19,7 @@ public class CancelPolicy {
     public static final PassableException ERR_CANCEL_EXPLICIT = new PassableException("Cancelled explicitly");
 
     private final CancelPolicy parent;
-    private Collection<CancelPolicy> children = new ConcurrentLinkedDeque<>();
+    private final Collection<CancelPolicy> children = new ConcurrentLinkedDeque<>();
 
     private final AtomicReference<Throwable> state = new AtomicReference<>();
     private final AtomicReference<SafeOpt> cancelledSource = new AtomicReference<>();
@@ -50,6 +51,13 @@ public class CancelPolicy {
         if (parent != null) {
             parent.children.add(this);
         }
+    }
+
+    public static CancelPolicy fromParent(CancelPolicy parent) {
+        if (parent == null) {
+            return null;
+        }
+        return new CancelPolicy(parent, parent.cancelOnError, parent.interruptableAwait, parent.passError);
     }
 
     public void cancel(Throwable error) {
@@ -135,7 +143,8 @@ public class CancelPolicy {
             return -1;
         }
         ///dummy item park
-        return parkedThreads.park(Boolean.TRUE);
+        int park = parkedThreads.park(Boolean.TRUE);
+        return park;
     }
 
     public boolean unparkIfSupported(int idx) {
@@ -149,8 +158,14 @@ public class CancelPolicy {
         if (parkedThreads == null) {
             return;
         }
+        if (DEBUG) {
+            System.out.println("Interrupt live threads");
+        }
         for (Thread thread : parkedThreads.getAliveThreads()) {
             thread.interrupt();
+            if (DEBUG) {
+                System.out.println("Interrupt" + thread.getName() + thread.getId());
+            }
         }
     }
 

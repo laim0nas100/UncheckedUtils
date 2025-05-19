@@ -1,5 +1,6 @@
 package lt.lb.uncheckedutils.concurrent;
 
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -10,6 +11,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import lt.lb.uncheckedutils.Checked;
+import static lt.lb.uncheckedutils.SafeOptAsync.DEBUG;
+import static lt.lb.uncheckedutils.SafeOptAsync.thread;
 
 /**
  *
@@ -17,15 +21,21 @@ import java.util.stream.Stream;
  */
 public class ThreadLocalParkSpace<T> implements Iterable<T> {
 
-    private ThreadLocal<Integer> reservedIndex = ThreadLocal.withInitial(() -> -1);
+    private ThreadLocal<SpaceInfo> reserved = ThreadLocal.withInitial(() -> new SpaceInfo());
 
     private final AtomicInteger slidingIndex = new AtomicInteger(-1);
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(false);
 
+    private static class SpaceInfo {
+
+        private int index = -1;
+        private int count = 0;
+    }
+
     private static class Item {
 
-        private AtomicReference<Thread> thread;
-        private Object item;
+        private final AtomicReference<Thread> thread;
+        private final ArrayDeque item = new ArrayDeque<>(2);
 
         public Item() {
             thread = new AtomicReference(null);
@@ -33,26 +43,29 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
 
         public Item(Thread thread, Object val) {
             this.thread = new AtomicReference(thread);
-            this.item = val;
+            this.item.add(val);
         }
 
         private boolean isAlive() {
-            return thread.get() != null && thread.get().isAlive();
+            Thread t = thread.get();
+            return t != null && t.isAlive();
         }
     }
-    
-    private static class Volatile{
+
+    private static class Volatile {
+
         public Item[] items;
     }
 
+    // make array volatile by pointer indirection
     private volatile Volatile array = new Volatile();
 
     public ThreadLocalParkSpace() {
-        this(4);
+        this(Checked.REASONABLE_PARALLELISM);
     }
 
     public ThreadLocalParkSpace(int initialSize) {
-        initialSize = Math.max(4, initialSize);
+        initialSize = Math.max(Checked.REASONABLE_PARALLELISM, initialSize);
         array.items = new Item[initialSize];
         for (int i = 0; i < initialSize; i++) {
             array.items[i] = new Item();
@@ -62,33 +75,47 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
     protected int tryParkReplace(int index, T item) {
         int size = array.items.length;
         int tries = size;
+        Thread currentThread = Thread.currentThread();
         while (tries >= 0) {
-
+            tries--;
             index = slidingIndex.accumulateAndGet(0, (current, discard) -> {
                 return (current + 1) % size;
             });
             Item container = array.items[index];
-            if (container.thread.compareAndSet(null, Thread.currentThread())) {
-                container.item = item;
-                reservedIndex.set(index);
+
+            Thread refThread = container.thread.get();
+            if (refThread == null && container.thread.compareAndSet(refThread, currentThread)) {
+                container.item.clear();
+                container.item.add(item);
+                SpaceInfo space = reserved.get();
+                space.index = index;
+                space.count = 1;
+                if (DEBUG) {
+                    System.out.println("Parked new:" + thread());
+                }
                 return index;
             } else { // not null
-                Thread refThread = container.thread.get();
-                if (!refThread.isAlive() && container.thread.compareAndSet(refThread, Thread.currentThread())) {//replaced
-                    container.item = item;
-                    reservedIndex.set(index);
+
+                if (refThread != currentThread && !container.isAlive() && container.thread.compareAndSet(refThread, currentThread)) {//replaced
+                    if (DEBUG) {
+                        System.out.println("Replaced park:" + thread());
+                    }
+                    container.item.clear();
+                    container.item.add(item);
+                    SpaceInfo space = reserved.get();
+                    space.index = index;
+                    space.count = container.item.size();
                     return index;
                 }
-                tries--;
 
             }
         }
-        return index;
+        return -1;
     }
 
     public int park(T item) {
         Objects.requireNonNull(item);
-        int index = reservedIndex.get();
+        int index = reserved.get().index;
         if (index >= 0) {
             if (park(index, item)) {
                 return index;
@@ -111,17 +138,28 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
 
             try {
                 // grow
+                if (DEBUG) {
+                    System.out.println("Try Grow ThreadSpace");
+                }
                 lock.writeLock().lock();
-                if (prevLength == array.items.length) { // other thread maybe grew array while we were waiting for lock, try again
-                    int oldSize = array.items.length;
-                    int newSize = (int) Math.round(oldSize * 1.5);
-                    int actualNewSize = oldSize + Math.min(16, newSize - oldSize); // conservative grow
+                int size = array.items.length;
+                if (prevLength == size) { // other thread maybe grew array while we were waiting for lock, try again
+
+                    int newSize = (int) Math.round(size * 1.5);
+                    int actualNewSize = size + Math.min(32, newSize - size); // conservative grow
+                    if (DEBUG) {
+                        System.out.println("Grow ThreadSpace to " + actualNewSize);
+                    }
                     array.items = Arrays.copyOf(array.items, actualNewSize);
-                    array.items[oldSize] = new Item(Thread.currentThread(), item);
-                    for (int i = oldSize + 1; i < actualNewSize; i++) {
+                    array.items[size] = new Item(Thread.currentThread(), item);
+                    for (int i = size + 1; i < actualNewSize; i++) {
                         array.items[i] = new Item();
                     }
-                    return oldSize;
+                    return size;
+                } else {
+                    if (DEBUG) {
+                        System.out.println("Failed to grow ThreadSpace " + prevLength + " != " + size);
+                    }
                 }
 
             } finally {
@@ -133,11 +171,17 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
 
     public boolean park(int index, T item) {
         Objects.requireNonNull(item);
-        lock.readLock().lock();
+
         try {
-            Item cont = array.items[index];
-            if (cont.thread.get() == Thread.currentThread()) {
-                cont.item = item;
+            lock.readLock().lock();
+            Item container = array.items[index];
+            Thread currentThread = Thread.currentThread();
+            if (container.thread.compareAndSet(currentThread, currentThread)) {
+                if (DEBUG) {
+                    System.out.println("re-Parked:" + thread());
+                }
+                container.item.add(item);
+                reserved.get().count = container.item.size();
                 return true;
             }
             return false;
@@ -148,12 +192,27 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
     }
 
     public boolean unpark(int index) {
+        SpaceInfo space = reserved.get();
         if (index < 0) {
-            if ((index = reservedIndex.get()) < 0) {
+            if ((index = space.index) < 0) {
                 return false;
             }
         }
-        if (array.items[index].thread.compareAndSet(Thread.currentThread(), null)) {
+        Thread t = Thread.currentThread();
+        Item container = array.items[index];
+        if (space.count == 1 && container.thread.compareAndSet(t, null)) {
+            container.item.clear();
+            space.count = 0;
+            if (DEBUG) {
+                System.out.println("unparked completely:" + thread());
+            }
+            return true;
+        } else if (container.thread.compareAndSet(t, t)) {
+            if (DEBUG) {
+                System.out.println("unparked once:" + thread());
+            }
+            container.item.pollLast();
+            space.count--;
             return true;
         }
         return false;
@@ -206,7 +265,7 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
             @Override
             public T next() {
                 Item container = array.items[++i];
-                return (T) container.item;
+                return (T) container.item.peekLast();
             }
         };
     }

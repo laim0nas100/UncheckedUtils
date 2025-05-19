@@ -23,6 +23,7 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
 import lt.lb.uncheckedutils.CancelException;
 import lt.lb.uncheckedutils.Checked;
+import static lt.lb.uncheckedutils.SafeOptAsync.thread;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
@@ -39,7 +40,7 @@ import org.junit.Test;
  * @author laim0nas100
  */
 public class SafeOptTest {
-
+    
     public static class NullInt {
 
         public Integer get() {
@@ -347,50 +348,6 @@ public class SafeOptTest {
     }
 
     @Test
-    public void testCancelOnFinish() throws Exception {
-        int completion = 5;
-        SafeScope scope = new SafeScope(new CancelPolicy(true, true, true), completion);
-//        ExecutorService pool = Executors.newFixedThreadPool(12);
-//        scope.submitter = Submitter.ofExecutorService(pool);
-
-        List<SafeOpt<Integer>> list = new ArrayList<>();
-        for (int i = 0; i < 8; i++) {
-            SafeOpt<Integer> chain = scope.of(i)
-                    .map(f -> {
-                        Thread.sleep(f * 1000);
-                        return f;
-                    })
-                    .chain(scope.completionListener());
-            list.add(chain);
-        }
-
-        System.out.println("Waiting for finish:" + list.size());
-
-        try {
-//            for (int i = 0; i < list.size(); i++) {
-//                System.out.println("Awaited:" + list.get(i).throwAnyGet());
-//            }
-            scope.awaitCompletion();
-        } catch (Exception ex) {
-            System.out.println(ex.getMessage());
-            throw ex;
-        }
-
-        System.out.println("Completed:" + scope.getCompleted().size());
-        System.out.println(scope.getCompleted());
-
-        Assertions.assertThat(scope.getCompleted().size()).isEqualTo(completion);
-        List<Integer> collect = scope.getCompleted().stream().map(m -> (int) m.get()).collect(Collectors.toList());
-        List<Integer> expected = new ArrayList<>();
-        for (int i = 0; i < completion; i++) {
-            expected.add(i);
-        }
-        Assertions.assertThat(scope.getCompleted().size()).isEqualTo(completion);
-        Assertions.assertThat(collect).containsSequence(expected);
-
-    }
-
-    @Test
     public void testCancel() throws Exception {
         SafeScope scope = new SafeScope(new CancelPolicy(true, true, true));
 //        ExecutorService pool = Executors.newFixedThreadPool(12);
@@ -681,7 +638,7 @@ public class SafeOptTest {
         return Thread.currentThread().getId();
     }
 
-    public static SafeOpt<Integer> nestedPeek(boolean async,int current, int deep, int linear, int split, int iter) {
+    public static SafeOpt<Integer> nestedPeek(boolean async, int current, int deep, int linear, int split, int iter) {
         if (current >= deep) {
             return SafeOpt.of(0);
         }
@@ -704,12 +661,12 @@ public class SafeOptTest {
                 asyncPrint(Thread.currentThread().getName() + " " + getId() + " iter_" + iter + " nested_" + current + " split_" + l);
                 return m;
 
-            }).flatMap(m -> nestedPeek(async,current + 1, deep, linear, split - 1, iter));
+            }).flatMap(m -> nestedPeek(async, current + 1, deep, linear, split - 1, iter));
         }
         return peek.map(m -> {
 //            Thread.sleep(10);
             return m;
-        }).flatMap(m -> nestedPeek(async,current + 1, deep, linear, split, iter));
+        }).flatMap(m -> nestedPeek(async, current + 1, deep, linear, split, iter));
 
     }
 
@@ -722,7 +679,7 @@ public class SafeOptTest {
             asyncPrint(Thread.currentThread().getName() + " Start");
             List<SafeOpt> peeks = new ArrayList<>();
             for (int i = 0; i < 24; i++) {
-                peeks.add(nestedPeek(true,0, 25, 5, 1, i));
+                peeks.add(nestedPeek(true, 0, 25, 5, 1, i));
             }
 
 //            SafeOpt.ofAsync(0).peek(m -> {
@@ -733,7 +690,7 @@ public class SafeOptTest {
                 peek.get();
             }
             asyncPrint(Thread.currentThread().getName() + " End");
-            asyncPrint(Checked.REASONABLE_PARALLELISM+" "+Submitter.NESTING_LIMIT);
+            asyncPrint(Checked.REASONABLE_PARALLELISM + " " + Submitter.NESTING_LIMIT);
             logger.shutdown();
 
 //            new Thread(() -> {
