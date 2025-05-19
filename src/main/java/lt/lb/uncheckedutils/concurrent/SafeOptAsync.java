@@ -15,9 +15,6 @@ import java.util.function.Function;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.SafeOptBase;
 import lt.lb.uncheckedutils.SafeOptCollapse;
-import lt.lb.uncheckedutils.concurrent.CancelPolicy;
-import lt.lb.uncheckedutils.concurrent.CompletedFuture;
-import lt.lb.uncheckedutils.concurrent.Submitter;
 
 /**
  *

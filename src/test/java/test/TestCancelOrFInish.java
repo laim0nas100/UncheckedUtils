@@ -64,8 +64,8 @@ public class TestCancelOrFInish {
         assertScope(scope, completion);
 
     }
-    
-    public void assertScope(SafeScope scope, int expected){
+
+    public void assertScope(SafeScope scope, int expected) {
         Assertions.assertThat(scope.getCompleted().size()).isEqualTo(expected);
         List<Integer> collect = scope.getCompleted().stream().map(m -> (int) m.get()).collect(Collectors.toList());
         List<Integer> expectedSeq = new ArrayList<>();
@@ -102,7 +102,7 @@ public class TestCancelOrFInish {
 
         submit(a, 10);
         submit(b, 10);
-         submit(c, 10);
+        submit(c, 10);
 
         scope.awaitCompletionWithChildren();
         assertScope(a, 2);
