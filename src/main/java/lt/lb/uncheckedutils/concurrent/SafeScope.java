@@ -9,9 +9,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import static lt.lb.uncheckedutils.SafeOptAsync.DEBUG;
+import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.DEBUG;
 import lt.lb.uncheckedutils.SafeOpt;
-import lt.lb.uncheckedutils.SafeOptAsync;
 
 /**
  *

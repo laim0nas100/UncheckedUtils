@@ -6,7 +6,6 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import lt.lb.uncheckedutils.Checked;
-import lt.lb.uncheckedutils.SafeOptAsync;
 
 /**
  *

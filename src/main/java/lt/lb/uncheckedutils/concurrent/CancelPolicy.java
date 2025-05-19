@@ -4,7 +4,7 @@ import java.util.Collection;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicReference;
 import lt.lb.uncheckedutils.CancelException;
-import static lt.lb.uncheckedutils.SafeOptAsync.DEBUG;
+import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.DEBUG;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
 

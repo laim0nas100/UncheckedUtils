@@ -23,7 +23,7 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
 import lt.lb.uncheckedutils.CancelException;
 import lt.lb.uncheckedutils.Checked;
-import static lt.lb.uncheckedutils.SafeOptAsync.thread;
+import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.thread;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;

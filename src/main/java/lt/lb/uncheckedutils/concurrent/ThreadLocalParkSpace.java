@@ -12,8 +12,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lt.lb.uncheckedutils.Checked;
-import static lt.lb.uncheckedutils.SafeOptAsync.DEBUG;
-import static lt.lb.uncheckedutils.SafeOptAsync.thread;
+import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.DEBUG;
+import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.thread;
 
 /**
  *

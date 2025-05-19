@@ -3,7 +3,7 @@ package test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
-import static lt.lb.uncheckedutils.SafeOptAsync.thread;
+import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.thread;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.SafeScope;

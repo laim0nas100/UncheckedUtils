@@ -1,4 +1,4 @@
-package lt.lb.uncheckedutils;
+package lt.lb.uncheckedutils.concurrent;
 
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
@@ -6,6 +6,9 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.function.Function;
+import lt.lb.uncheckedutils.SafeOpt;
+import lt.lb.uncheckedutils.SafeOptBase;
+import lt.lb.uncheckedutils.SafeOptCollapse;
 import lt.lb.uncheckedutils.concurrent.CompletedFuture;
 
 /**

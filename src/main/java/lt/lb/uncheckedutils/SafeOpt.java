@@ -1,5 +1,6 @@
 package lt.lb.uncheckedutils;
 
+
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
@@ -11,6 +12,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+import lt.lb.uncheckedutils.concurrent.SafeOptAsync;
 import lt.lb.uncheckedutils.concurrent.Submitter;
 import lt.lb.uncheckedutils.func.UncheckedBiFunction;
 import lt.lb.uncheckedutils.func.UncheckedConsumer;
