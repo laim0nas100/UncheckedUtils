@@ -74,7 +74,7 @@ public class Thrower<T extends Throwable> {
     }
 
     /**
-     * Throws if applicable {@link RuntimeException} or {@link Errpr}
+     * Throws if applicable {@link RuntimeException} or {@link Error}
      *
      * @return
      * @throws Error
