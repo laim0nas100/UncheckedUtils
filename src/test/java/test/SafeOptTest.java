@@ -27,6 +27,7 @@ import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.thread;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
+import lt.lb.uncheckedutils.Thrower;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.SafeScope;
 import lt.lb.uncheckedutils.concurrent.Submitter;
@@ -40,7 +41,40 @@ import org.junit.Test;
  * @author laim0nas100
  */
 public class SafeOptTest {
-    
+
+    @Test
+    public void testThrower() {
+        Assertions.assertThatExceptionOfType(Exception.class).isThrownBy(() -> {
+            try {
+                throw new Exception("Checked exception");
+            } catch (Throwable th) {
+                throw Thrower.of(th)
+                        .throwIfUnchecked() // this should not throw
+                        .toNested();
+            }
+        });
+        Assertions.assertThatExceptionOfType(Error.class).isThrownBy(() -> {
+            try {
+                throw new Error("Error");
+            } catch (Throwable th) {
+                throw Thrower.of(th)
+                        .throwIfUnchecked() // this should throw Error
+                        .toNested();
+            }
+        });
+        
+        Assertions.assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> {
+            try {
+                throw new RuntimeException("Runtime error");
+            } catch (Throwable th) {
+                throw Thrower.of(th)
+                        .throwIfUnchecked() // this should throw Runtime
+                        .toNested();
+            }
+        });
+
+    }
+
     public static class NullInt {
 
         public Integer get() {
