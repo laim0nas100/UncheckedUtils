@@ -65,12 +65,10 @@ public class NestedException extends StacklessRuntimeException {
      * @param ex
      * @throws X
      */
-    public static <X extends Throwable> void unwrappedThrowIf(Throwable th, Class<X>... ex) throws X {
+    public static <X extends Throwable> void unwrappedThrowIf(Throwable th, Class<X> ex) throws X {
         Throwable t = unwrap(th);
-        for (Class<X> cls : ex) {
-            if (cls.isInstance(t)) {
-                throw (X) t;
-            }
+        if (ex.isInstance(t)) {
+            throw (X) t;
         }
     }
 
@@ -114,7 +112,7 @@ public class NestedException extends StacklessRuntimeException {
     public String getMessage() {
         return getCause().getMessage();
     }
-    
+
     @Override
     public StackTraceElement[] getStackTrace() {
         return getCause().getStackTrace();
