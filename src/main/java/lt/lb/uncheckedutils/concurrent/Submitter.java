@@ -38,6 +38,36 @@ public abstract class Submitter {
         return size > 0 && (size + 1 > nesting || stack.contains(task));
     }
 
+    /**
+     * No thread limit, every time a new thread (or existing waiting thread).
+     * Recommended to use with virtual threads, otherwise use with caution.
+     * {@link ThreadLocal} is not used. The most primitive implementation.
+     *
+     * @param service
+     * @return
+     */
+    public static Submitter ofUnlimitedParallelism(final ExecutorService service) {
+        Objects.requireNonNull(service);
+        return new Submitter() {
+            @Override
+            public boolean continueInPlace(SafeOptAsync.AsyncWork task) {// dont care
+                return false;
+            }
+
+            @Override
+            public void submit(SafeOptAsync.AsyncWork task) {
+                service.submit(task);
+            }
+        };
+    }
+
+    /**
+     * No thread limit, only nesting limit
+     *
+     * @param service
+     * @param nesting
+     * @return
+     */
     public static Submitter ofUnlimitedParallelism(final ExecutorService service, final int nesting) {
         Objects.requireNonNull(service);
         if (nesting < 0) {
@@ -186,7 +216,7 @@ public abstract class Submitter {
     private static Submitter createDefault() {
         ExecutorService service = Checked.createDefaultExecutorService();
         if (Checked.VIRTUAL_EXECUTORS_METHOD.isPresent()) {//virtual online
-            return ofUnlimitedParallelism(service, NESTING_LIMIT);
+            return ofUnlimitedParallelism(service);
         }
         return ofLimitedParallelism(service, Checked.REASONABLE_PARALLELISM, 1);
     }
@@ -202,11 +232,42 @@ public abstract class Submitter {
             return true;
         }
     };
+    public static final Submitter NEW_THREAD = new NewThreadSubmitter();
 
-    public static final Submitter NEW_THREAD = new Submitter() {
-        private final int nesting = Math.min(2, NESTING_LIMIT);
+    public static final Submitter NEW_THREAD_LIMITED_NESTING = new NewThreadSubmitterNesting();
+
+    public static class NewThreadSubmitter extends Submitter {
+
+        @Override
+        public boolean continueInPlace(SafeOptAsync.AsyncWork task) {
+            return false;
+        }
+
+        @Override
+        public void submit(SafeOptAsync.AsyncWork task) {
+            new Thread(task).start();
+        }
+
+    }
+
+    public static class NewThreadSubmitterNesting extends Submitter {
+
+        private final int nesting;
         //always start new thread even if nested calls
         private final ThreadLocal<ArrayDeque<SafeOptAsync.AsyncWork>> inside = ThreadLocal.withInitial(() -> null);
+
+        public NewThreadSubmitterNesting() {
+            this(Math.min(2, NESTING_LIMIT));
+        }
+
+        public NewThreadSubmitterNesting(int nesting) {
+            this.nesting = nesting;
+        }
+
+        @Override
+        public boolean continueInPlace(SafeOptAsync.AsyncWork task) {
+            return insideCheck(inside.get(), nesting, task);
+        }
 
         @Override
         public void submit(SafeOptAsync.AsyncWork task) {
@@ -241,10 +302,6 @@ public abstract class Submitter {
             }).start();
         }
 
-        @Override
-        public boolean continueInPlace(SafeOptAsync.AsyncWork task) {
-            return insideCheck(inside.get(), nesting, task);
-        }
-    };
+    }
 
 }

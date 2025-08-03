@@ -3,7 +3,6 @@ package test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
-import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.thread;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.concurrent.CancelPolicy;
 import lt.lb.uncheckedutils.concurrent.SafeScope;
@@ -12,9 +11,14 @@ import org.junit.Test;
 
 /**
  *
- * @author Lemmin
+ * @author laim0nas100
  */
 public class TestCancelOrFInish {
+
+    static String thread() {
+        Thread t = Thread.currentThread();
+        return t.getName() + " " + t.getId();
+    }
 
     @Test
     public void testCancelOnFinish() throws Exception {

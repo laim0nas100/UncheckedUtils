@@ -22,12 +22,7 @@ import lt.lb.uncheckedutils.SafeOptCollapse;
  */
 public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T> {
 
-    public static final boolean DEBUG = false;
-
-    public static String thread() {
-        Thread t = Thread.currentThread();
-        return t.getName() + " " + t.getId();
-    }
+    static final boolean DEBUG = false;// package private
 
     public static final CompletedFuture<SafeOpt> EMPTY = new CompletedFuture<>(SafeOpt.empty());
 
@@ -68,13 +63,15 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
         }
 
-        public void addMaybeSubmit(Submitter submitter, FutureTask<SafeOpt> task) {
+        public boolean addMaybeSubmit(Submitter submitter, FutureTask<SafeOpt> task) {
             lock.lock();
             try {
-                workQueue.add(task);
-                if (state == UNSTARTED || state == EXITING) {
+                workQueue.add(task);//always add to work queue
+                if (state == UNSTARTED || state == EXITING) {//start or restart thread
                     submitter.submit(this);
+                    return true;
                 }
+                return false;
             } finally {
                 lock.unlock();
             }

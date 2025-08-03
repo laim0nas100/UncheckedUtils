@@ -1,6 +1,5 @@
 package lt.lb.uncheckedutils.concurrent;
 
-import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -13,13 +12,21 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lt.lb.uncheckedutils.Checked;
 import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.DEBUG;
-import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.thread;
 
 /**
  *
  * @author laim0nas100
  */
 public class ThreadLocalParkSpace<T> implements Iterable<T> {
+
+    /**
+     * for debug
+     * @return 
+     */
+    static String thread() {
+        Thread t = Thread.currentThread();
+        return t.getName() + " " + t.getId();
+    }
 
     private ThreadLocal<SpaceInfo> reserved = ThreadLocal.withInitial(() -> new SpaceInfo());
 
@@ -106,7 +113,7 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
                 space.count = 1;
                 return index;
             }
-             index = (index + 1) % size;
+            index = (index + 1) % size;
 
         }
         return -1;
@@ -163,7 +170,7 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
                     for (int i = size + 1; i < actualNewSize; i++) {
                         array.items[i] = new Item();
                     }
-                    slidingIndex.set(size-1);
+                    slidingIndex.set(size - 1);
                     return size;
                 } else {
                     if (DEBUG) {

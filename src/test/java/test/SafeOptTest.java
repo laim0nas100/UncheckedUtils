@@ -23,7 +23,6 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
 import lt.lb.uncheckedutils.CancelException;
 import lt.lb.uncheckedutils.Checked;
-import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.thread;
 import lt.lb.uncheckedutils.NestedException;
 import lt.lb.uncheckedutils.PassableException;
 import lt.lb.uncheckedutils.SafeOpt;
@@ -41,6 +40,11 @@ import org.junit.Test;
  * @author laim0nas100
  */
 public class SafeOptTest {
+
+    static String thread() {
+        Thread t = Thread.currentThread();
+        return t.getName() + " " + t.getId();
+    }
 
     @Test
     public void testThrower() {
@@ -62,7 +66,7 @@ public class SafeOptTest {
                         .toNested();
             }
         });
-        
+
         Assertions.assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> {
             try {
                 throw new RuntimeException("Runtime error");
