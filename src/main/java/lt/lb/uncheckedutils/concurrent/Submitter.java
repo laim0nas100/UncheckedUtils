@@ -47,18 +47,7 @@ public abstract class Submitter {
      * @return
      */
     public static Submitter ofUnlimitedParallelism(final ExecutorService service) {
-        Objects.requireNonNull(service);
-        return new Submitter() {
-            @Override
-            public boolean continueInPlace(SafeOptAsync.AsyncWork task) {// dont care
-                return false;
-            }
-
-            @Override
-            public void submit(SafeOptAsync.AsyncWork task) {
-                service.submit(task);
-            }
-        };
+        return new UnlimitedSubmitter(service);
     }
 
     /**
@@ -215,7 +204,7 @@ public abstract class Submitter {
 
     private static Submitter createDefault() {
         ExecutorService service = Checked.createDefaultExecutorService();
-        if (Checked.VIRTUAL_EXECUTORS_METHOD.isPresent()) {//virtual online
+        if (Checked.VIRTUAL_EXECUTORS_METHOD.isPresent()) {//virtual threads online
             return ofUnlimitedParallelism(service);
         }
         return ofLimitedParallelism(service, Checked.REASONABLE_PARALLELISM, 1);
@@ -235,6 +224,31 @@ public abstract class Submitter {
     public static final Submitter NEW_THREAD = new NewThreadSubmitter();
 
     public static final Submitter NEW_THREAD_LIMITED_NESTING = new NewThreadSubmitterNesting();
+
+    public static class UnlimitedSubmitter extends Submitter {
+
+        protected final ExecutorService service;
+
+        public UnlimitedSubmitter(ExecutorService service) {
+            this.service = service;
+        }
+
+        @Override
+        public boolean continueInPlace(SafeOptAsync.AsyncWork task) {
+            return false;
+        }
+
+        @Override
+        public boolean limited() {
+            return false;
+        }
+
+        @Override
+        public void submit(SafeOptAsync.AsyncWork task) {
+            service.submit(task);
+        }
+
+    }
 
     public static class NewThreadSubmitter extends Submitter {
 
@@ -257,7 +271,7 @@ public abstract class Submitter {
         private final ThreadLocal<ArrayDeque<SafeOptAsync.AsyncWork>> inside = ThreadLocal.withInitial(() -> null);
 
         public NewThreadSubmitterNesting() {
-            this(Math.min(2, NESTING_LIMIT));
+            this(Math.min(1, NESTING_LIMIT));
         }
 
         public NewThreadSubmitterNesting(int nesting) {
