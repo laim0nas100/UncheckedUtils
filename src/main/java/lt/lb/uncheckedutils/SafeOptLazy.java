@@ -8,7 +8,9 @@ import java.util.function.Function;
 /**
  *
  * @author laim0nas100
+ * @deprecated implicitly waits 60 seconds and fails if not completed by another thread, use {@link SafeOptLazySnap}
  */
+@Deprecated
 public class SafeOptLazy<S, T> extends SafeOptBase<T> implements SafeOptCollapse<T> {
 
     protected final SafeOpt<S> initial;

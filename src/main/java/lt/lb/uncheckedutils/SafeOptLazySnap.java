@@ -56,10 +56,18 @@ public class SafeOptLazySnap<T> extends SafeOptBase<T> implements SafeOptCollaps
 
     }
 
-    public static abstract class CachedSupplierCompute<T> implements CachedSupplier<T> {
+    public static class CachedSupplierCompute<T,O> implements CachedSupplier<O> {
 
-        private final CompletableFuture<SafeOpt<T>> cached = new CompletableFuture<>();
+        private final CompletableFuture<SafeOpt<O>> cached = new CompletableFuture<>();
         private final AtomicBoolean computeCalled = new AtomicBoolean(false);
+        private final SafeOptCollapse<T> prev;
+        private final Function<SafeOpt<T>,SafeOpt<O>> func;
+
+        public CachedSupplierCompute(SafeOptCollapse<T> prev, Function<SafeOpt<T>, SafeOpt<O>> func) {
+            this.prev = prev;
+            this.func = func;
+        }
+
 
         @Override
         public boolean isDone() {
@@ -72,7 +80,12 @@ public class SafeOptLazySnap<T> extends SafeOptBase<T> implements SafeOptCollaps
         }
 
         @Override
-        public final SafeOpt<T> get() {
+        public SafeOpt<O> compute() {
+            return func.apply(prev.collapse());
+        }
+
+        @Override
+        public final SafeOpt<O> get() {
             try {
                 if (cached.isDone()) {
                     return cached.get();
@@ -81,11 +94,11 @@ public class SafeOptLazySnap<T> extends SafeOptBase<T> implements SafeOptCollaps
                     return cached.get();
                 }//compute
                 try {
-                    SafeOpt<T> compute = compute();
+                    SafeOpt<O> compute = compute();
                     cached.complete(compute);
                     return compute;
                 } catch (Throwable tr) {
-                    SafeOpt<T> error = SafeOpt.error(tr);
+                    SafeOpt<O> error = SafeOpt.error(tr);
                     cached.complete(error);
                     return error;
                 }
@@ -133,13 +146,8 @@ public class SafeOptLazySnap<T> extends SafeOptBase<T> implements SafeOptCollaps
         } else if (cheap && supplier.isDone()) {// every mapping was cheap before, so start new chain
             return new SafeOptLazySnap<>(func.apply(collapse()));
         }
-        SafeOptLazySnap<T> prev = this;
-        return new SafeOptLazySnap<>(new CachedSupplierCompute<O>() {
-            @Override
-            public SafeOpt<O> compute() {
-                return func.apply(prev.collapse());
-            }
-        });
+        
+        return new SafeOptLazySnap<>(new CachedSupplierCompute<>(this, func));
     }
 
     @Override
