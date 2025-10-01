@@ -9,12 +9,12 @@ import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import lt.lb.uncheckedutils.SafeOpt;
 import lt.lb.uncheckedutils.SafeOptBase;
 import lt.lb.uncheckedutils.SafeOptCollapse;
+import static lt.lb.uncheckedutils.concurrent.ThreadLocalParkSpace.thread;
 
 /**
  *
@@ -32,22 +32,24 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         protected final CancelPolicy cp;
         protected final Deque<FutureTask<SafeOpt>> workQueue = new ArrayDeque<>();
 
-        protected volatile int state = UNSTARTED;
+        protected volatile int state = INACTIVE;
 
-        public static final int UNSTARTED = 0;
-        public static final int ACTIVE = 1;
-        public static final int EXITING = 2;
+        public static final int INACTIVE = 0;
+        public static final int SUBMITTED = 1;
+        public static final int ACTIVE = 2;
 
-        public final ReentrantLock lock = new ReentrantLock(true);
+        /**
+         * state and workQueue must be read and written only whilst holding this lock
+         */
+        protected final ReentrantLock lock = new ReentrantLock(true);
 
-        private FutureTask<SafeOpt> getNext() throws InterruptedException {
+        private FutureTask<SafeOpt> getNext() {
             try {
-
                 lock.lock(); // dont interrupt, we need to process every submitted task anyway
                 for (;;) {
                     FutureTask<SafeOpt> next = workQueue.poll();
                     if (next == null) {
-                        state = EXITING;
+                        state = INACTIVE;
                         return null;
                     }
                     if (next.isDone()) {
@@ -67,7 +69,8 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             lock.lock();
             try {
                 workQueue.add(task);//always add to work queue
-                if (state == UNSTARTED || state == EXITING) {//start or restart thread
+                if (state == INACTIVE) {//start or restart thread, but only once
+                    state = SUBMITTED;
                     submitter.submit(this);
                     return true;
                 }
@@ -84,7 +87,10 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
         @Override
         public void run() {
-            logic();
+            // demand the state is SUBMITTED
+            if (state == SUBMITTED) {
+                logic();
+            }
         }
 
         protected void logic() {
@@ -103,7 +109,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                     // not done
                     if (cp != null && cp.cancelled()) {
                         if (DEBUG) {
-                            System.out.println("Cancelled without running");
+                            System.out.println(thread() + " Cancelled without running");
                         }
                         next.cancel(cp.interruptableAwait);
                         continue;
@@ -114,13 +120,13 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                     if (cp != null && cp.cancelOnError && get.hasError()) {
                         cp.cancel(first, get.rawException());
                         if (DEBUG) {
-                            System.out.println("Cancelled after running");
+                            System.out.println(thread() + " Cancelled after running");
                         }
                     }
 
                 } catch (CancellationException | ExecutionException | InterruptedException discard) {
                     if (DEBUG) {
-                        System.out.println("Discarded:" + discard.getClass().getSimpleName() + " " + discard.getMessage());
+                        System.out.println(thread() + " Discarded:" + discard.getClass().getSimpleName() + " " + discard.getMessage());
                     }
                     //every FutureTask is a mapping to SafeOpt. SafeOpt never throws by desing
                     //only way to get here is by unlikely thread race condition if it is cancelled after checking isDone,
@@ -134,9 +140,6 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             }
         }
 
-        protected void await() {
-            LockSupport.parkNanos(1);//spin wait
-        }
     }
 
     @Override
@@ -152,27 +155,42 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
             park = async.cp.parkIfSupported();
         }
         try {
-            if (submitter.limited()) { // resolve nasty nesting deadlocks
+            if (submitter.limited()) { // resolve or mitigate nesting deadlocks
+
                 while (complete == null) {
                     try {
-                        complete = base.get(500, TimeUnit.MILLISECONDS);
+                        if (!base.isDone()) {
+                            if (DEBUG) {
+                                System.out.println(thread() + " yielding");
+                            }
+                            Thread.yield();//let the work continue
+                        }
+                        complete = base.get(100, TimeUnit.MILLISECONDS); // should be small enough
                     } catch (TimeoutException ex) {
+
                         boolean locked = false;
+                        boolean resumeWork = false;
                         try {
 
                             async.lock.lockInterruptibly();
-                            locked = true;
-                            if (async.state == AsyncWork.ACTIVE) {
-                                continue;
-                            }
-                            if (!base.isDone()) {//maybe done after lock await
-                                async.run();
+                            locked = true; // lock only for state checking
+                            //we can assume base is not done
+                            resumeWork = (async.state == AsyncWork.INACTIVE) && !async.workQueue.isEmpty();
+                            //the thread responsible for this AsyncWork died and thre is more work
+                            if (resumeWork) {
+                                async.state = AsyncWork.SUBMITTED;
                             }
 
                         } finally {
                             if (locked) {
                                 async.lock.unlock();
                             }
+                        }
+                        if (resumeWork) {
+                            if (DEBUG) {
+                                System.out.println(thread() + " Resuming work in waiting thread");
+                            }
+                            async.run();
                         }
                     }
                 }
@@ -205,11 +223,17 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
     public <O> SafeOpt<O> functor(Function<SafeOpt<T>, SafeOpt<O>> func) {
         Objects.requireNonNull(func, "Functor is null");
         if (submitter.continueInPlace(async)) {
+            if (DEBUG) {
+                System.out.println(thread() + " in place");
+            }
             return new SafeOptAsync<>(submitter, func.apply(collapse()), async);
         }
 
         FutureTask<SafeOpt<O>> futureTask = new FutureTask<>(() -> func.apply(collapse()));
-        async.addMaybeSubmit(submitter, (FutureTask) futureTask);
+        boolean addMaybeSubmit = async.addMaybeSubmit(submitter, (FutureTask) futureTask);
+        if (DEBUG) {
+            System.out.println(thread() + " submitted " + addMaybeSubmit);
+        }
 
         return new SafeOptAsync<>(submitter, futureTask, async);
     }
