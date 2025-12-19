@@ -33,6 +33,7 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
 
     private final AtomicInteger slidingIndex = new AtomicInteger(-1);
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(false);
+    private final boolean nesting;
 
     private static class SpaceInfo {
 
@@ -40,16 +41,16 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
         private int count = 0;
     }
 
-    private static class Item {
+    private static class Item<T> {
 
         private final AtomicReference<Thread> thread;
-        private volatile Object item;
+        private volatile T item;
 
         public Item() {
             thread = new AtomicReference(null);
         }
 
-        public Item(Thread thread, Object val) {
+        public Item(Thread thread, T val) {
             this.thread = new AtomicReference(thread);
             this.item = val;
         }
@@ -60,9 +61,9 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
         }
     }
 
-    private static class Volatile {
+    private static class Volatile<T> {
 
-        public Item[] items;
+        public Item<T>[] items;
 
         public int size() {
             return items.length;
@@ -70,34 +71,39 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
     }
 
     // make array volatile by pointer indirection
-    private volatile Volatile array = new Volatile();
+    private volatile Volatile<T> array = new Volatile<>();
 
     public ThreadLocalParkSpace() {
         this(Checked.REASONABLE_PARALLELISM);
     }
 
     public ThreadLocalParkSpace(int initialSize) {
+        this(initialSize, true);
+    }
+
+    public ThreadLocalParkSpace(int initialSize, boolean nesting) {
+        this.nesting = nesting;
         initialSize = Math.max(Checked.REASONABLE_PARALLELISM, initialSize);
         if (initialSize % 2 != 0) {
             initialSize++;
         }
         array.items = new Item[initialSize];
         for (int i = 0; i < initialSize; i++) {
-            array.items[i] = new Item();
+            array.items[i] = new Item<>();
         }
     }
 
-    protected int tryParkReplace(int index, T item) {
+    protected int findParkReplace(T item) {
         final int size = array.size();
         int tries = size;
         Thread currentThread = Thread.currentThread();
-        index = slidingIndex.accumulateAndGet(0, (current, discard) -> {
+        int index = slidingIndex.accumulateAndGet(0, (current, discard) -> {
             return (current + 1) % size;
         });
         while (tries >= 0) {
             tries--;
 
-            Item container = array.items[index];
+            Item<T> container = array.items[index];
 
             Thread refThread = container.thread.get();
             if (refThread != currentThread && !container.isAlive() && container.thread.compareAndSet(refThread, currentThread)) {//replaced
@@ -122,25 +128,35 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
 
     public int park(T item) {
         Objects.requireNonNull(item);
-        if (reserved.get().count != 0) {//repeated park
-            if (DEBUG) {
-                System.out.println(thread() + " Repeated park");
+        SpaceInfo info = reserved.get();
+        if (info.count > 0) {//repeated park
+            if (nesting) {
+                int c = ++info.count;
+                if (DEBUG) {
+                    System.out.println(thread() + " Repeated park allowed " + c);
+                }
+                return info.index;
+            } else {
+                if (DEBUG) {
+                    System.out.println(thread() + " Repeated park rejected");
+                }
+                return -1;
             }
-            return -1;
         }
-        int index = reserved.get().index;
+
+        int index = info.index;
         if (index >= 0) {
             if (park(index, item)) {
                 return index;
             }
         }
         for (;;) {
-
+            //index is -1
             int prevLength = -1;
             try {
                 lock.readLock().lock();
                 prevLength = array.size();
-                index = tryParkReplace(index, item);
+                index = findParkReplace(item);
             } finally {
                 lock.readLock().unlock();
             }
@@ -171,7 +187,7 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
                     for (int i = size + 1; i < actualNewSize; i++) {
                         array.items[i] = new Item();
                     }
-                    slidingIndex.set(size - 1);
+                    slidingIndex.set(size);
                     return size;
                 } else {
                     if (DEBUG) {
@@ -194,10 +210,22 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
             Item container = array.items[index];
             Thread currentThread = Thread.currentThread();
             if (container.thread.compareAndSet(currentThread, currentThread)) {
-                if (DEBUG) {
-                    System.out.println(thread() + " repeated park");
+                if (nesting) {
+                    SpaceInfo info = reserved.get();
+                    if (info.index == index) {
+                        int c = ++info.count;
+                        if (DEBUG) {
+                            System.out.println(thread() + " repeated park allowd " + c);
+                        }
+                    }
+                    return true;
+                } else {
+                    if (DEBUG) {
+                        System.out.println(thread() + " repeated park rejected");
+                    }
+                    return false;
                 }
-                return false;
+
             } else if (container.thread.compareAndSet(null, currentThread)) {
                 if (DEBUG) {
                     System.out.println(thread() + " re-Parked");
@@ -232,11 +260,18 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
                 System.out.println(thread() + " unparked completely");
             }
             return true;
+        } else if (nesting && space.count > 1 && container.thread.compareAndSet(t, t)) {
+            int c = --space.count;
+            if (DEBUG) {
+                System.out.println(thread() + " unparked partialy " + c);
+            }
+            return true;
         }
+
         return false;
     }
 
-    private Stream<Item> getAliveContainers() {
+    private Stream<Item<T>> getAliveContainers() {
         return Stream.of(array.items).filter(f -> f.isAlive());
     }
 
@@ -263,7 +298,7 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
     public Map<Thread, T> getAliveThreadItems() {
         lock.readLock().lock();
         try {
-            return getAliveContainers().collect(Collectors.toMap(t -> t.thread.get(), t -> (T) t.item));
+            return getAliveContainers().collect(Collectors.toMap(t -> t.thread.get(), t -> t.item));
         } finally {
             lock.readLock().unlock();
         }
@@ -282,8 +317,8 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
 
             @Override
             public T next() {
-                Item container = array.items[++i];
-                return (T) container.item;
+                Item<T> container = array.items[++i];
+                return container.item;
             }
         };
     }
