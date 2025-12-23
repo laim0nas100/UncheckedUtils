@@ -2,9 +2,9 @@
 
 # UncheckedUtils – Happy-Path Programming in Java
 
-**UncheckedUtils** is a small, zero-dependency library that lets you write clean, linear, **happy-path** code in Java — without the usual `try-catch` hell, null-check boilerplate, or checked-exception noise.
+**UncheckedUtils** is a small, zero-dependency library that lets you write clean, linear, **happy-path** code in Java without the usual `try-catch` hell, null-check boilerplate, or checked-exception noise.
 
- **`SafeOpt<T>`** — a monadic container that unifies:
+ **`SafeOpt<T>`** a monadic container that unifies:
 - Optional-like absence (`empty`)
 - Error handling (as values, not exceptions)
 - Lazy evaluation
@@ -39,7 +39,7 @@ If we expected to not fail, but did anyway - just handle it with default value o
 
 ### 1. SafeOpt – The Unified Container
 - **Absence**: `SafeOpt.empty()` or `ofNullable(null)`
-- **Error**: `SafeOpt.error(Throwable)` — exceptions become values
+- **Error**: `SafeOpt.error(Throwable)` exceptions become values
 - **Success**: `SafeOpt.of(value)`
 
 All operations automatically propagate empty/error states.
@@ -147,7 +147,7 @@ SafeScope scope = new SafeScope(policy, 3));  // complete after 3 successes
     SafeOpt<Task> t4 = scope.of(4).map(v -> task(v)).chain(scope.completionListener());
     SafeOpt<Task> t5 = scope.of(5).map(v -> task(v)).chain(scope.completionListener());
 
-// Once 3 succeed, scope completes — remaining tasks short-circuit via policy
+// Once 3 succeed, scope completes and remaining tasks short-circuit via policy
 scope.awaitCompletion();  // blocks until done
 
 //any calls to t4 or t5 (assuming they finished last) result in either provided "completed" SafeOpt or special error (wrapped in SafeOpt)
