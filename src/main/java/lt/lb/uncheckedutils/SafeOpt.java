@@ -1,6 +1,5 @@
 package lt.lb.uncheckedutils;
 
-
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
@@ -175,33 +174,64 @@ public interface SafeOpt<T> {
     }
 
     /**
-     * Returns lazy {@code SafeOpt} based on the specified future. Every
-     * possible operation is lazily evaluated and the result is only collapsed
-     * when needed.
+     * Returns a lazy {@code SafeOpt} based on the given {@link Future}.
+     * <p>
+     * The future is <strong>memoized</strong>: {@link Future#get()} is called
+     * only once, on the first <strong>terminal operation</strong> (any method
+     * that does not return a {@code SafeOpt}), and the result (value or
+     * exception) is cached forever.
+     * <p>
+     * Non-terminal operations remain lazy and do not block on the future.
+     * <p>
+     * Note: interruptions during {@code get()} are captured as errors in the
+     * resulting {@code SafeOpt}.
      *
-     * @param <T>
-     * @param future
-     * @return
+     * @param <T> the type of the future result
+     * @param future the future to wrap
+     * @return a lazy, memoized {@code SafeOpt}
+     * @throws NullPointerException if future is null
      */
     public static <T> SafeOpt<T> ofFuture(Future<T> future) {
         return new SafeOptLazySnap<>(SafeOpt.of(future)).map(Future::get);
     }
 
     /**
-     * Returns lazy {@code SafeOpt} based on the specified value. Every possible
-     * operation is lazily evaluated and the result is only collapsed when
-     * needed.
+     * Returns a lazy {@code SafeOpt} wrapping the given value.
+     * <p>
+     * The wrapped value (which may be {@code null}) and any chained operations
+     * are
+     * <strong>deferred and memoized</strong>: evaluation occurs only once, the
+     * first time a <strong>terminal operation</strong> is invoked, and the
+     * result is cached for all subsequent accesses.
+     * <p>
+     * A terminal operation is any method that does <strong>not</strong> return
+     * a {@code SafeOpt} (e.g., {@code get()}, {@code orElse()}, {@code orNull()}, {@code orElseThrow()},
+     * {@code ifPresent()}, {@code stream()}, etc.). Non-terminal operations
+     * such as {@code map()}, {@code flatMap()}, {@code peek()}, and
+     * {@code filter()} remain fully lazy and do not trigger evaluation.
+     * <p>
+     * If the initial value is {@code null}, the resulting {@code SafeOpt} is
+     * immediately empty and no further computation in the chain will occur.
+     * <p>
+     * Example:
+     * <pre>{@code
+     * SafeOpt<Params> params = SafeOpt.ofLazy("path/to/parameter.conf")
+     *     .map(path -> parseParams(path))           // expensive parse, deferred + memoized
+     *     .orElse(defaultParams);                   // triggers evaluation here
      *
-     * @param <T>
-     * @param val
-     * @return
+     * Params cached = params.orElse(defaultParams);  // instant, returns cached result
+     * }</pre>
+     *
+     * @param <T> the type of the value
+     * @param val the value to wrap (may be null)
+     * @return a lazy, memoized {@code SafeOpt}
      */
     public static <T> SafeOpt<T> ofLazy(T val) {
         return new SafeOptLazySnap<>(SafeOpt.ofNullable(val));
     }
 
     /**
-     * Returns {@code SafeOpt} based on the specified value.Every possible
+     * Returns {@code SafeOpt} based on the specified value. Every possible
      * operation is evaluated in given executor, similarly to
      * {@link CompletableFuture}.
      *
@@ -227,6 +257,14 @@ public interface SafeOpt<T> {
         return new SafeOptAsync<>(Submitter.DEFAULT_POOL, ofNullable(val));
     }
 
+    /**
+     * Returns async {@code SafeOpt} based on the specified value. Every
+     * possible operation is evaluated in {@linkplain Submitter#NEW_THREAD}
+     *
+     * @param <T>
+     * @param val
+     * @return
+     */
     public static <T> SafeOpt<T> ofAsyncUnpinnable(T val) {
         return new SafeOptAsync<>(Submitter.NEW_THREAD, ofNullable(val));
     }

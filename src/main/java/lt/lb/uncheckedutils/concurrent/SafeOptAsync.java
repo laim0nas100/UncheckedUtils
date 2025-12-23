@@ -39,7 +39,8 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
         public static final int ACTIVE = 2;
 
         /**
-         * state and workQueue must be read and written only whilst holding this lock
+         * state and workQueue must be read and written only whilst holding this
+         * lock
          */
         protected final ReentrantLock lock = new ReentrantLock(true);
 
@@ -159,14 +160,11 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
 
                 while (complete == null) {
                     try {
-                        if (!base.isDone()) {
-                            if (DEBUG) {
-                                System.out.println(thread() + " yielding");
-                            }
-                            Thread.yield();//let the work continue
-                        }
-                        complete = base.get(100, TimeUnit.MILLISECONDS); // should be small enough
+                        complete = base.get(1000, TimeUnit.MILLISECONDS); // periodic probe, maybe the task is not even executing
                     } catch (TimeoutException ex) {
+                        if (async.cp != null && async.cp.cancelled()) {
+                            return complete = async.cp.getError();
+                        }
 
                         boolean locked = false;
                         boolean resumeWork = false;
@@ -176,7 +174,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                             locked = true; // lock only for state checking
                             //we can assume base is not done
                             resumeWork = (async.state == AsyncWork.INACTIVE) && !async.workQueue.isEmpty();
-                            //the thread responsible for this AsyncWork died and thre is more work
+                            //the thread responsible for this AsyncWork died and there is more work
                             if (resumeWork) {
                                 async.state = AsyncWork.SUBMITTED;
                             }
@@ -194,7 +192,7 @@ public class SafeOptAsync<T> extends SafeOptBase<T> implements SafeOptCollapse<T
                         }
                     }
                 }
-            } else {
+            } else {// we are likely in a virtual thread environment, just let it block 
                 complete = base.get();
             }
 

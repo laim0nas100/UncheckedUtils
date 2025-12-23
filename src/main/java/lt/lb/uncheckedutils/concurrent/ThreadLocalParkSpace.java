@@ -10,7 +10,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import lt.lb.uncheckedutils.Checked;
 import static lt.lb.uncheckedutils.concurrent.SafeOptAsync.DEBUG;
 
 /**
@@ -34,6 +33,8 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
     private final AtomicInteger slidingIndex = new AtomicInteger(-1);
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(false);
     private final boolean nesting;
+
+    public static final int DEFAULT_SIZE = 8;
 
     private static class SpaceInfo {
 
@@ -74,19 +75,12 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
     private volatile Volatile<T> array = new Volatile<>();
 
     public ThreadLocalParkSpace() {
-        this(Checked.REASONABLE_PARALLELISM);
-    }
-
-    public ThreadLocalParkSpace(int initialSize) {
-        this(initialSize, true);
+        this(DEFAULT_SIZE, true);
     }
 
     public ThreadLocalParkSpace(int initialSize, boolean nesting) {
         this.nesting = nesting;
-        initialSize = Math.max(Checked.REASONABLE_PARALLELISM, initialSize);
-        if (initialSize % 2 != 0) {
-            initialSize++;
-        }
+        initialSize = Integer.highestOneBit(Math.max(DEFAULT_SIZE, initialSize));// confine to the power of 2
         array.items = new Item[initialSize];
         for (int i = 0; i < initialSize; i++) {
             array.items[i] = new Item<>();
@@ -98,7 +92,7 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
         int tries = size;
         Thread currentThread = Thread.currentThread();
         int index = slidingIndex.accumulateAndGet(0, (current, discard) -> {
-            return (current + 1) % size;
+            return (current + 3) % size;
         });
         while (tries >= 0) {
             tries--;
@@ -174,17 +168,16 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
                 int size = array.size();
                 if (prevLength == size) { // other thread maybe grew array while we were waiting for lock, try again
 
-                    int newSize = (int) Math.round(size * 2);
-                    int actualNewSize = size + Math.min(1024, newSize - size); // conservative grow after a big array
+                    int newSize = size + Math.min(1024, (size * 2) - size); // linear grow after a big array
                     if (DEBUG) {
-                        System.out.println(thread() + " Grow ThreadSpace to " + actualNewSize);
+                        System.out.println(thread() + " Grow ThreadSpace to " + newSize);
                     }
-                    array.items = Arrays.copyOf(array.items, actualNewSize);
+                    array.items = Arrays.copyOf(array.items, newSize);
                     array.items[size] = new Item(Thread.currentThread(), item);
                     SpaceInfo space = reserved.get();
                     space.count = 1;
                     space.index = size;
-                    for (int i = size + 1; i < actualNewSize; i++) {
+                    for (int i = size + 1; i < newSize; i++) {
                         array.items[i] = new Item();
                     }
                     slidingIndex.set(size);
@@ -215,7 +208,7 @@ public class ThreadLocalParkSpace<T> implements Iterable<T> {
                     if (info.index == index) {
                         int c = ++info.count;
                         if (DEBUG) {
-                            System.out.println(thread() + " repeated park allowd " + c);
+                            System.out.println(thread() + " repeated park allowed " + c);
                         }
                     }
                     return true;
