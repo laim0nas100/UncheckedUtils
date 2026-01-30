@@ -231,6 +231,40 @@ public interface SafeOpt<T> {
     }
 
     /**
+     * Returns a lazy {@code SafeOpt} wrapping the given value.
+     * <p>
+     * The wrapped value (which may be {@code null}) and any chained operations
+     * are
+     * <strong>deferred and memoized</strong>: evaluation occurs only once, the
+     * first time a <strong>terminal operation</strong> is invoked, and the
+     * result is cached for all subsequent accesses.
+     * <p>
+     * A terminal operation is any method that does <strong>not</strong> return
+     * a {@code SafeOpt} (e.g., {@code get()}, {@code orElse()}, {@code orNull()}, {@code orElseThrow()},
+     * {@code ifPresent()}, {@code stream()}, etc.). Non-terminal operations
+     * such as {@code map()}, {@code flatMap()}, {@code peek()}, and
+     * {@code filter()} remain fully lazy and do not trigger evaluation.
+     * <p>
+     * If the initial value is {@code null}, the resulting {@code SafeOpt} is
+     * immediately empty and no further computation in the chain will occur.
+     * <p>
+     * Example:
+     * <pre>{@code
+     * SafeOpt<Params> params = SafeOpt.ofLazy(()-> parseParams(path))           // expensive parse, deferred + memoized
+     *     .orElse(defaultParams);                                              // triggers evaluation here
+     * Params cached = params.orElse(defaultParams);                            // instant, returns cached result
+     * }</pre>
+     *
+     * @param <T> the type of the value
+     * @param val the value to wrap (may be null)
+     * @return a lazy, memoized {@code SafeOpt}
+     */
+    public static <T> SafeOpt<T> ofLazy(Supplier<T> suppl) {
+        Objects.requireNonNull(suppl);
+        return SafeOptLazySnap.STARTING.map(o -> suppl.get());
+    }
+
+    /**
      * Returns {@code SafeOpt} based on the specified value. Every possible
      * operation is evaluated in given executor, similarly to
      * {@link CompletableFuture}.

@@ -14,6 +14,12 @@ import java.util.function.Supplier;
  */
 public class SafeOptLazySnap<T> extends SafeOptBase<T> implements SafeOptCollapse<T> {
 
+    /**
+     * Non empty starting point, to use with suppliers or mappers without
+     * creating a starting one every time.
+     */
+    public static final SafeOptLazySnap STARTING = new SafeOptLazySnap(SafeOpt.of(new Object()));
+
     public static interface CachedSupplier<T> extends Supplier<SafeOpt<T>> {
 
         public boolean isComputable();
@@ -143,8 +149,14 @@ public class SafeOptLazySnap<T> extends SafeOptBase<T> implements SafeOptCollaps
         Objects.requireNonNull(func, "Functor is null");
         if (supplier.isComputed()) {
             return func.apply(collapse());// no more lazy application after collapse
-        } else if (cheap && supplier.isDone()) {// every mapping was cheap before, so start new chain
-            return new SafeOptLazySnap<>(func.apply(collapse()));
+        } else if (cheap && supplier.isDone()) { // every mapping was cheap before, so start new chain if not empty
+            SafeOpt<T> collapse = collapse();
+            if (collapse.isPresent()) {
+                return new SafeOptLazySnap<>(func.apply(collapse));
+            } else {
+                return func.apply(collapse);//no longer lazy after getting empty
+            }
+
         }
 
         return new SafeOptLazySnap<>(new CachedSupplierCompute<>(this, func));
