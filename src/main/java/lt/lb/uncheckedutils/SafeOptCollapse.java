@@ -60,7 +60,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -71,7 +71,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -80,6 +80,11 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
         return collapse().rawException();
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<Throwable> getError() {
         return functorCheap(f -> f.getError());
@@ -87,7 +92,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -99,7 +104,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -110,7 +115,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -121,7 +126,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -132,7 +137,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -144,7 +149,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -156,7 +161,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -167,7 +172,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -178,7 +183,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -190,7 +195,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -202,7 +207,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -213,7 +218,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -224,7 +229,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -247,23 +252,43 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
         return functor(f -> f.mapCombine(with, mapper));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<Void> keepError() {
         return functorCheap(f -> f.keepError());
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> peekError(Consumer<Throwable> errorCons) {
         Objects.requireNonNull(errorCons);
         return functorCheap(f -> f.peekError(errorCons));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> orGet(Supplier<? extends T> supplier) {
         Objects.requireNonNull(supplier);
         return functorCheap(f -> f.orGet(supplier));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> orGetOpt(Supplier<? extends Optional<? extends T>> supplier) {
         Objects.requireNonNull(supplier);
@@ -294,6 +319,11 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
         return functor(f -> f.flatMap(mapper));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default <U> SafeOpt<U> select(Class<? extends U> clazz) {
         Objects.requireNonNull(clazz);
@@ -318,18 +348,33 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
         return functor(f -> f.filter(predicate));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> peek(UncheckedConsumer<? super T> action) {
         Objects.requireNonNull(action);
         return functorCheap(f -> f.peek(action));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> peek(Consumer<? super T> action) {
         Objects.requireNonNull(action);
         return functorCheap(f -> f.peek(action));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> peekOrElse(UncheckedConsumer<? super T> action, UncheckedRunnable emptyAction) {
         Objects.requireNonNull(action);
@@ -337,6 +382,11 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
         return functorCheap(f -> f.peekOrElse(action, emptyAction));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> peekOrElse(Consumer<? super T> action, UncheckedRunnable emptyAction) {
         Objects.requireNonNull(action);
@@ -344,6 +394,11 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
         return functorCheap(f -> f.peekOrElse(action, emptyAction));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> peekOrElse(UncheckedConsumer<? super T> action, Runnable emptyAction) {
         Objects.requireNonNull(action);
@@ -351,6 +406,11 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
         return functorCheap(f -> f.peekOrElse(action, emptyAction));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> peekOrElse(Consumer<? super T> action, Runnable emptyAction) {
         Objects.requireNonNull(action);
@@ -358,12 +418,22 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
         return functorCheap(f -> f.peekOrElse(action, emptyAction));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> peekOrDefault(T def, UncheckedConsumer<? super T> action) {
         Objects.requireNonNull(action);
         return functorCheap(f -> f.peekOrDefault(def, action));
     }
 
+    /**
+     * Cheap.
+     *
+     * {@inheritDoc}
+     */
     @Override
     public default SafeOpt<T> peekOrDefault(T def, Consumer<? super T> action) {
         Objects.requireNonNull(action);
@@ -372,7 +442,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -384,7 +454,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -397,7 +467,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -409,7 +479,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -420,7 +490,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -431,7 +501,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -442,7 +512,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -453,7 +523,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -464,7 +534,7 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     /**
      *
-     * Collapsed.
+     * Collapsing.
      *
      * {@inheritDoc}
      */
@@ -517,19 +587,12 @@ public interface SafeOptCollapse<T> extends SafeOpt<T> {
 
     @Override
     public default Stream<T> ignoringExceptionStream() {
-        return StreamSupport.stream(
-                Spliterators.spliteratorUnknownSize(
-                        asIterator(this, true),
-                        Spliterator.ORDERED),
-                false);
+        return StreamSupport.stream(Spliterators.spliterator(asIterator(this, true), 1, Spliterator.SIZED), false);
     }
 
     @Override
     public default Stream<T> stream() throws NestedException {
-        return StreamSupport.stream(
-                Spliterators.spliteratorUnknownSize(
-                        asIterator(this, false),
-                        Spliterator.ORDERED),
-                false);
+        return StreamSupport.stream(Spliterators.spliterator(asIterator(this, false), 1, Spliterator.SIZED), false);
+
     }
 }
